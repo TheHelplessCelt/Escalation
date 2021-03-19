@@ -1,0 +1,176 @@
+[global]
+Name = Escalation
+UIName = Dawn of War II - Escalation
+Description = yeah stuff
+ModVersion = 0.1
+ModFolder = Escalation
+; Note: the engine mounts the following automat(g)ically:
+; 	movies:	GameAssets\Data\Movies
+; 	folder:	GameAssets\Locale\<lang>
+UCSBaseIndex = 70000000
+
+[attrib:common]
+folder.01 = Escalation\DataAttrib
+folder.02 = GameAssets\Data
+archive.01 = Escalation\Archives\GameAttrib_orig.sga
+
+[sound:common]
+folder.01 = GameAssets\Data\Sound
+archive.01 = GameAssets\Archives\GameSoundContainers.sga
+archive.02 = GameAssets\Archives\003_sound.sga
+archive.03 = GameAssets\Archives\002_sound.sga
+archive.04 = GameAssets\Archives\001_sound.sga
+archive.05 = GameAssets\Archives\000_sound.sga
+
+[sound:english]
+folder.01 = GameAssets\Locale\English\Sound
+archive.01 = GameAssets\Locale\English\English_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\English\English_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\English\English_002_speech.sga
+archive.04 = GameAssets\Locale\English\English_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\English\English_001_speech.sga
+archive.06 = GameAssets\Locale\English\English_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\English\English_000_speech.sga
+
+[sound:french]
+folder.01 = GameAssets\Locale\French\Sound
+archive.01 = GameAssets\Locale\French\French_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\French\French_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\French\French_002_speech.sga
+archive.04 = GameAssets\Locale\French\French_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\French\French_001_speech.sga
+archive.06 = GameAssets\Locale\French\French_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\French\French_000_speech.sga
+
+[sound:german]
+folder.01 = GameAssets\Locale\German\Sound
+archive.01 = GameAssets\Locale\German\German_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\German\German_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\German\German_002_speech.sga
+archive.04 = GameAssets\Locale\German\German_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\German\German_001_speech.sga
+archive.06 = GameAssets\Locale\German\German_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\German\German_000_speech.sga
+
+[sound:russian]
+folder.01 = GameAssets\Locale\Russian\Sound
+archive.01 = GameAssets\Locale\Russian\Russian_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\Russian\Russian_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\Russian\Russian_002_speech.sga
+archive.04 = GameAssets\Locale\Russian\Russian_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\Russian\Russian_001_speech.sga
+archive.06 = GameAssets\Locale\Russian\Russian_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\Russian\Russian_000_speech.sga
+
+[sound:spanish]
+folder.01 = GameAssets\Locale\Spanish\Sound
+archive.01 = GameAssets\Locale\Spanish\Spanish_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\Spanish\Spanish_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\Spanish\Spanish_002_speech.sga
+archive.04 = GameAssets\Locale\Spanish\Spanish_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\Spanish\Spanish_001_speech.sga
+archive.06 = GameAssets\Locale\Spanish\Spanish_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\Spanish\Spanish_000_speech.sga
+
+[sound:italian]
+folder.01 = GameAssets\Locale\Italian\Sound
+archive.01 = GameAssets\Locale\Italian\English_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\Italian\English_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\Italian\English_002_speech.sga
+archive.04 = GameAssets\Locale\Italian\English_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\Italian\English_001_speech.sga
+archive.06 = GameAssets\Locale\Italian\English_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\Italian\English_000_speech.sga
+
+[sound:czech]
+folder.01 = GameAssets\Locale\Czech\Sound
+archive.01 = GameAssets\Locale\Czech\English_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\Czech\English_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\Czech\English_002_speech.sga
+archive.04 = GameAssets\Locale\Czech\English_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\Czech\English_001_speech.sga
+archive.06 = GameAssets\Locale\Czech\English_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\Czech\English_000_speech.sga
+
+[sound:polish]
+folder.01 = GameAssets\Locale\Polish\Sound
+archive.01 = GameAssets\Locale\Polish\English_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\Polish\English_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\Polish\English_002_speech.sga
+archive.04 = GameAssets\Locale\Polish\English_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\Polish\English_001_speech.sga
+archive.06 = GameAssets\Locale\Polish\English_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\Polish\English_000_speech.sga
+
+[sound:tchinese]
+folder.01 = GameAssets\Locale\TChinese\Sound
+archive.01 = GameAssets\Locale\TChinese\English_GameSpeechContainers.sga
+archive.02 = GameAssets\Locale\TChinese\English_002_speech_campaign.sga
+archive.03 = GameAssets\Locale\TChinese\English_002_speech.sga
+archive.04 = GameAssets\Locale\TChinese\English_001_speech_campaign.sga
+archive.05 = GameAssets\Locale\TChinese\English_001_speech.sga
+archive.06 = GameAssets\Locale\TChinese\English_000_speech_campaign.sga
+archive.07 = GameAssets\Locale\TChinese\English_000_speech.sga
+
+[movies:common]
+folder.01 = GameAssets\Data\Movies
+
+[movies:english]
+folder.01 = GameAssets\Locale\English\Movies
+
+[movies:french]
+folder.01 = GameAssets\Locale\French\Movies
+
+[movies:german]
+folder.01 = GameAssets\Locale\German\Movies
+
+[movies:russian]
+folder.01 = GameAssets\Locale\Russian\Movies
+
+[movies:spanish]
+folder.01 = GameAssets\Locale\Spanish\Movies
+
+[movies:italian]
+folder.01 = GameAssets\Locale\Italian\Movies
+
+[movies:czech]
+folder.01 = GameAssets\Locale\Czech\Movies
+
+[movies:polish]
+folder.01 = GameAssets\Locale\Polish\Movies
+
+[movies:tchinese]
+folder.01 = GameAssets\Locale\TChinese\Movies
+
+[data:common]
+folder.01 = Escalation\Data
+folder.02 = GameAssets\Data
+archive.01 = GameAssets\Archives\005_laststand.sga
+archive.02 = GameAssets\Archives\005_multiplayer.sga
+archive.03 = GameAssets\Archives\005_data.sga
+archive.04 = GameAssets\Archives\004_campaign.sga
+archive.05 = GameAssets\Archives\004_laststand.sga
+archive.06 = GameAssets\Archives\004_multiplayer.sga
+archive.07 = GameAssets\Archives\004_extra.sga
+archive.08 = GameAssets\Archives\004_data.sga
+archive.09 = GameAssets\Archives\003_campaign.sga
+archive.10 = GameAssets\Archives\003_laststand.sga
+archive.11 = GameAssets\Archives\003_multiplayer.sga
+archive.12 = GameAssets\Archives\003_extra.sga
+archive.13 = GameAssets\Archives\003_data.sga
+archive.14 = GameAssets\Archives\002_campaign.sga
+archive.15 = GameAssets\Archives\002_laststand.sga
+archive.16 = GameAssets\Archives\002_multiplayer.sga
+archive.17 = GameAssets\Archives\002_extra.sga
+archive.18 = GameAssets\Archives\002_data.sga
+archive.19 = GameAssets\Archives\001_campaign.sga
+archive.20 = GameAssets\Archives\001_laststand.sga
+archive.21 = GameAssets\Archives\001_multiplayer.sga
+archive.22 = GameAssets\Archives\001_extra.sga
+archive.23 = GameAssets\Archives\001_data.sga
+archive.24 = GameAssets\Archives\000_campaign.sga
+archive.25 = GameAssets\Archives\000_laststand.sga
+archive.26 = GameAssets\Archives\000_multiplayer.sga
+archive.27 = GameAssets\Archives\000_extra.sga
+archive.28 = GameAssets\Archives\000_data.sga
+
