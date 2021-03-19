@@ -1,0 +1,650 @@
+----------------------------------------------------------------------------------------------------------------
+-- UI helper functions
+-- (c) 2003 Relic Entertainment Inc.
+
+--? @group UI
+
+--? @shortdesc Highlights an SGroup in the UI for the given duration
+--? @args SGroupID sgroup, Real duration
+--? @result Void
+function UI_HighlightSGroup( sgroupid, duration )
+	
+	local _OneSquad = function (gid, idx, sid)
+		UI_HighlightSquad(sid, duration)
+	end
+	
+	SGroup_ForEach(sgroupid, _OneSquad)
+	
+end
+
+function nothing()
+end
+
+--~ --? @shortdesc Removes a blip already created on the minimap
+--~ --? @result Void
+--~ --? @args Integer blipID
+--~ function UI_DeleteMinimapBlip(blipID)
+--~ 	if blipID ~= nil then
+--~ 		UI_DeleteMinimapBlipInternal(blipID)
+--~ 	end
+--~ end
+
+--~ --? @shortdesc Creates a blip on the minimap; return the ID of the blip.
+--~ --? @extdesc 'where' can be an entity, marker, position, egroup, sgroup, or squad.
+--~ --? The following blipTypes are available: BT_GeneralPing, BT_CombatPing
+--~ --? BT_PowerPing,
+--~ --? BT_SelectionPing,
+--~ --? BT_BuildingBoomPing,
+--~ --? BT_AbilityPing,
+--~ --? BT_ObjectivePrimary,
+--~ --? BT_ObjectiveSecondary,
+--~ --? BT_ObjectiveMedal,
+--~ --? BT_AttackHerePing, 
+--~ --? BT_DefendHerePing,
+--~ --? BT_CaptureHerePing,
+--~ --? @result blipID
+--~ --? @args StackVar where, Real lifetime, Integer blipType
+--~ function UI_CreateMinimapBlip(where, lifetime, blipType)
+
+--~ 	local type = scartype(where)
+--~ 	
+--~ 	if type == ST_ENTITY then
+--~ 		return UI_CreateMinimapBlipOnEntity(where, lifetime, blipType)
+--~ 	elseif type == ST_MARKER then
+--~ 		return UI_CreateMinimapBlipOnMarker(where, lifetime, blipType)
+--~ 	elseif type == ST_SCARPOS then
+--~ 		return UI_CreateMinimapBlipOnPos(where, lifetime, blipType)
+--~ 	elseif type == ST_EGROUP then
+--~ 		return UI_CreateMinimapBlipOnEGroup(where, lifetime, blipType)
+--~ 	elseif type == ST_SGROUP then
+--~ 		return UI_CreateMinimapBlipOnSGroup(where, lifetime, blipType)
+--~ 	elseif type == ST_SQUAD then
+--~ 		return UI_CreateMinimapBlipOnSquad(where, lifetime, blipType)
+--~ 	else
+--~ 		error("UI_CreateMinimapBlip: invalid type")
+--~ 	end
+--~ 	
+--~ end
+
+
+
+--? @shortdesc Creates a ping on the minimap at a given marker, position, EGroup or SGroup. The following pingtypes are available: PT_Generic, PT_PrimaryObjective, PT_SecondaryObjective
+--? @extdesc You can pass in an optional lifetime (in seconds) - the ping will automatically be removed after this expires.
+--? @args MarkerID/ScarPos/EGroupID/SGroupID where, Integer blipType[, Real lifetime]
+--? @result PingID
+function UI_CreateMinimapPing(where, pingtype, lifetime)
+
+	-- create a new blank ping table if there isn't one already
+	if _PingTable == nil then
+		_PingTable = {}
+	end
+	
+	-- work out the position
+	local pos = Util_GetPosition(where)
+	
+	-- if there's a lifetime specified, work out what game time this translates to
+	if lifetime ~= nil then
+		lifetime = lifetime + World_GetGameTime()
+	end
+	
+	-- create the ping, and add the id to the manager table
+	local pingid = UI_CreatePing(pingtype, pos.x, pos.z)
+	table.insert(_PingTable, {id = pingid, where = where, pingtype = pingtype, expiretime = lifetime} )
+	
+	-- add the manager rule if it isn't running already
+	if Rule_Exists(Ping_Manager) == false then
+		Rule_AddInterval(Ping_Manager, 1)
+	end
+	
+	return pingid
+	
+end
+
+
+--? @shortdesc Removes a ping from the minimap, and the manager
+--? @args PingID ping
+function UI_RemoveMinimapPing(id)
+	
+	if _PingTable ~= nil then
+		
+		-- go through the Ping table, remove the entry with this ID and remove the ping also
+		for k, this in pairs(_PingTable) do 
+			
+			if id == this.id then
+				UI_RemovePing(this.id)
+				table.remove(_PingTable, k)			
+			end
+			
+		end
+		
+	end
+
+end
+	
+	
+	
+-- internal ping manager	
+function Ping_Manager()
+	
+	for k, this in pairs(_PingTable) do 
+		
+		-- set our flag 
+		local marktoremove = false
+		
+		-- check to see if it had a lifetime which has now expired
+		if this.expiretime ~= nil and World_GetGameTime() >= this.expiretime then
+			marktoremove = true
+		end
+		
+		-- check to see if the EGroup it may have been pointing at is now destroyed
+		if scartype(this.where) == ST_EGROUP and EGroup_Count(this.where) == 0 then
+			marktoremove = true
+		end
+		
+		-- check to see if the SGroup it may have been pointing at is now destroyed
+		if scartype(this.where) == ST_SGROUP then
+			if SGroup_Count(this.where) == 0 then
+				marktoremove = true
+			else
+				-- update the position if it's still around
+				local pos = Util_GetPosition(this.where)
+				UI_SetPingPosition(this.id, pos.x, pos.z)
+			end
+		end
+		
+		-- remove the ping if it's been marked to be removed at all
+		if marktoremove == true then
+			UI_RemovePing(this.id)
+			table.remove(_PingTable, k)			
+		end
+		
+	end
+	
+	-- if we just removed the last item in the table, remove the rule, also
+	if table.getn(_PingTable) == 0 then
+		Rule_RemoveMe()
+	end
+	
+end
+
+
+
+--? @shortdesc Add pings to tactical map.
+--? @extdesc Be careful to remove your ping if needed!
+--? The following blipTypes are available: BT_GeneralPing, BT_CombatPing
+--? BT_PowerPing,
+--? BT_SelectionPing,
+--? BT_BuildingBoomPing,
+--? BT_AbilityPing,
+--? BT_ObjectivePrimary,
+--? BT_ObjectiveSecondary,
+--? BT_ObjectiveMedal,
+--? BT_AttackHerePing, 
+--? BT_DefendHerePing,
+--? BT_CaptureHerePing,
+--? @result blipID
+--? @args StackVar where, Real lifetime, Integer blipType
+function TacticalMap_AddPing( where, lifetime, blipType )
+
+	local type = scartype(where)
+	
+	if type == ST_ENTITY then
+		return TacticalMap_AddPingOnEntity( where, lifetime, blipType )
+	elseif type == ST_MARKER then
+		return TacticalMap_AddPingOnMarker( where, lifetime, blipType )
+	elseif type == ST_SCARPOS then
+		return TacticalMap_AddPingOnPos( where, lifetime, blipType )
+	elseif type == ST_EGROUP then
+		return TacticalMap_AddPingOnEGroup( where, lifetime, blipType )
+	elseif type == ST_SGROUP then
+		return TacticalMap_AddPingOnSGroup( where, lifetime, blipType )
+	elseif type == ST_SQUAD then
+		return TacticalMap_AddPingOnSquad( where, lifetime, blipType )
+	else
+		error("TacticalMap_AddPing: invalid type")
+	end
+	
+end
+
+--? @shortdesc Creates a hintpoint attached to a Marker, EGroup, SGroup or position
+--? @extdesc If range is set to 0, then the hintpoint is rangeless, see the design document for rangeless features.
+--? @args StackVar where, Boolean bVisible, LocString hintText
+--? @result HintPointID
+function HintPoint_Add(where, bVisible, hintText)
+	
+	local type = scartype(where)
+	
+	local defaultOffset = World_Pos(0,0,0)
+	
+	if type == ST_MARKER then
+		return HintPoint_AddToPosition(Marker_GetPosition(where), bVisible, nothing, hintText, defaultOffset, 0)
+	elseif type == ST_EGROUP then
+		return HintPoint_AddToEGroup(where, bVisible, nothing, hintText, defaultOffset)
+	elseif type == ST_SGROUP then
+		return HintPoint_AddToSGroup(where, bVisible, nothing, hintText, defaultOffset)
+	elseif type == ST_SCARPOS then
+		return HintPoint_AddToPosition(where, bVisible, nothing, hintText, defaultOffset, 0)
+	elseif type == ST_SQUAD then
+		return HintPoint_AddToSquad(where, bVisible, nothing, hintText, defaultOffset, 0)
+	elseif type == ST_ENTITY then
+		return HintPoint_AddToEntity(where, bVisible, nothing, hintText, defaultOffset, 0)
+	else
+		error("HintPoint_Add: invalid type")
+	end
+end
+
+--? @shortdesc Removes a hintpoint.
+--? @args Integer HintPointID
+--? @result Void
+function HintPoint_Remove(id)
+
+	if id == nil then
+		print("HintPoint_Remove: parameter is nil!")
+	elseif scartype(id) == ST_NUMBER then
+		HintPoint_RemoveInternal(id)
+	else
+		print("HintPoint_Remove: parameter is not nil, but is not a number either!")
+	end
+	
+end
+
+--? @shortdesc Sets a hintpoint's visibility. Currently, FOW is not accounted for.
+--? @args Integer HintPointID, Boolean bVisible
+--? @result Void
+function HintPoint_SetVisible(id, bVisible)
+
+	if id == nil then
+		print("HintPoint_SetVisible: parameter is nil!")
+	elseif scartype(id) == ST_NUMBER then
+		HintPoint_SetVisibleInternal(id, bVisible)
+	else
+		print("HintPoint_SetVisible: parameter is not nil, but is not a number either!")
+	end
+	
+end
+
+
+--[[ added by degnan ]]
+
+--? @shortdesc Adds a Hint Point that will only appear on Mouseover of the target.
+--? @args LocString hintText, Marker/Egroup/Sgroup hintTarget, Real targetRadius, Boolean looping
+--? @result Void
+function HintMouseover_Add(text, where, range, boolean)
+	
+	if _HintMouseOver == nil then
+		_HintMouseOver = {}
+	end
+	
+	table.insert(_HintMouseOver, {pos = where, activehint = nil, locid = text, radius = range, loop = boolean})
+	
+	if Rule_Exists(HintMouseover_Manager) == false then
+		Rule_AddInterval(HintMouseover_Manager, 1)
+	end
+
+end
+
+-- internal function
+function HintMouseover_Manager()
+	
+	local mousePos = Misc_GetMouseOnTerrain()
+	
+	if table.getn(_HintMouseOver) > 0 then
+		
+		for i = table.getn(_HintMouseOver), 1, -1 do 
+			
+			local this = _HintMouseOver[i]
+			local type = scartype(this.pos)
+			local mouseover = false
+			
+			-- is it a marker
+			if this.radius == -1 then
+				mouseover = true
+			elseif type == ST_MARKER then
+				local pos = Marker_GetPosition(this.pos)
+				if World_DistancePointToPoint(mousePos, pos) <= this.radius then
+					mouseover = true
+				end
+				
+			-- is it an egroup
+			elseif type == ST_EGROUP and EGroup_IsEmpty(this.pos) == false then
+				local pos = EGroup_GetPosition(this.pos)
+				if World_DistancePointToPoint(mousePos, pos) <= this.radius then
+					mouseover = true
+				end
+				
+			-- is it an SGROUP
+			elseif type == ST_SGROUP and SGroup_IsEmpty(this.pos) == false then
+				local pos = SGroup_GetPosition(this.pos)
+				if World_DistancePointToPoint(mousePos, pos) <= this.radius then
+					mouseover = true
+				end
+			end
+			
+			-- have we seen it all?
+			if mouseover then
+				
+				-- is the hint off
+				if this.activehint == nil then
+					
+					-- set the count to full
+					local delay = 5
+					if this.loop == false then
+						delay = delay*2
+					end
+					this.count = delay
+					this.activehint = HintPoint_Add(this.pos, true, this.locid)
+					
+				end
+				
+			-- the hint is on
+			elseif this.activehint ~= nil then
+				-- increment the count
+				this.count = this.count-1
+				if this.count < 1 then
+					HintPoint_Remove(this.activehint)
+					this.activehint = nil
+					if this.loop == false then
+						table.remove(_HintMouseOver, i)
+					end
+				end
+			end
+			
+		end
+		
+	else
+		
+		Rule_RemoveMe()
+		
+	end
+
+end
+
+
+
+--? @shortdesc Removes a Mouseover Hint Point from the managing function.
+--? @args LocString hintText, Marker/Egroup/Sgroup hintTarget
+--? @result Void
+function HintMouseover_Remove(text, position)
+	
+	if _HintMouseOver ~= nil then
+		
+		for i = table.getn(_HintMouseOver), 1, -1 do
+			local this = _HintMouseOver[i]
+			if position == this.pos and text == this.locid then
+				if this.activehint ~= nil then
+					HintPoint_Remove(this.activehint)
+				end
+				table.remove(_HintMouseOver, i)
+			end
+		end
+		
+	end
+
+end
+
+
+
+--
+-- Event Cue wrapper functions
+-- NJR (blame him)
+--
+
+function _EventCue_Init()
+
+	_EventCueList = {}
+	_EventCueHintPointList = {}
+
+end
+Scar_AddInit(_EventCue_Init)
+
+
+--? @shortdesc Creates an Event Cue message which automatically sends the camera to a specified point when clicked on. 
+--? @extdesc Can optionally create a 5-second hintpoint at the location when clicked on, and/or call a specified function for you, too. Both of these only activate the first time you click on the event cue to avoid stacking.
+--? @args CueStyleID style, LocString title, LocString description, Marker/Pos/EGroup/SGroup cameratarget[, LocString hintpointtext, LuaFunction function, Float lifetime, Boolean dismissOnClick]
+--? @result event cue ID
+function EventCue_Create(style, title, description, pos, hintpointmessage, lifetime, dismissOnClick)
+
+	local snd = style.sound
+	if snd == nil then
+		snd = "General_alert"
+	end
+	
+	-- special code that gets the icon from an ObjectiveTable if needed
+	local icon = style.icon
+	if icon == nil then
+		icon = style.Cue.icon
+	end
+	
+	if lifetime == nil then
+		lifetime = -1
+	end
+	
+	if dismissOnClick == nil then
+		dismissOnClick = false
+	end
+	
+	local type = scartype(pos)
+	if type == ST_MARKER then
+		pos = Marker_GetPosition( pos )
+	elseif type == ST_EGROUP then
+		pos = EGroup_GetPosition( pos )
+	elseif type == ST_SGROUP then
+		pos = SGroup_GetPosition( pos )
+	end
+	
+	-- do the event cue, and make a record of where the camera should go if this event cue is ever clicked on
+	local id = UI_CreateEventCueClickable(icon, snd, title, description, pos, lifetime, dismissOnClick)
+	-- ping the location on the minimap
+	if pos ~= nil then
+		UI_CreateMinimapPing(pos, PT_PointOfInterest)
+	end
+	
+	return id
+end
+
+
+--? @shortdesc Creates a infopoint attached to a Marker, EGroup or SGroup.
+--? @extdesc If range is set to 0, then the infopoint is rangeless, see the design document for rangeless features.
+--? @args PlayerID player, StackVar where, Float range, Boolean bVisible, Luafunction callback
+--? @result HintPointID
+function InfoPoint_Add(player, where, range, bVisible, callback)
+	
+	local type = scartype(where)
+	
+	if type == ST_MARKER then
+		return InfoPoint_AddToMarker(player, where, range, bVisible, callback)
+	elseif type == ST_EGROUP then
+		return InfoPoint_AddToEGroup(player, where, range, bVisible, callback)
+	elseif type == ST_SGROUP then
+		return InfoPoint_AddToSGroup(player, where, range, bVisible, callback)
+	else
+		error("InfoPoint_Add: invalid type")
+	end
+end
+
+--? @shortdesc Removes an infopoint.
+--? @args Integer HintPointID
+--? @result Void
+function InfoPoint_Remove(id)
+
+	if id == nil then
+		print("InfoPoint_Remove: parameter is nil!")
+	elseif scartype(id) == ST_NUMBER then
+		InfoPoint_RemoveInternal(id)
+	else
+		print("InfoPoint_Remove: parameter is not nil, but is not a number either!")
+	end
+	
+end
+
+--? @shortdesc Sets an infopoint's visiblity through FOW.
+--? @args Integer InfoPointID, Boolean bVisible
+--? @result Void
+function InfoPoint_SetVisible(id, bVisible)
+
+	if id == nil then
+		print("InfoPoint_SetVisible: parameter is nil!")
+	elseif scartype(id) == ST_NUMBER then
+		InfoPoint_SetVisibleInternal(id, bVisible)
+	else
+		print("InfoPoint_SetVisible: parameter is not nil, but is not a number either!")
+	end
+	
+end
+
+--? @shortdesc Create a custom kicker message on the squad and display to the player.
+--? @args PlayerID player, SGroup sgroup, LocString message
+--? @result Void
+function UI_CreateSGroupKickerMessage(player, sgroup, message)
+
+	local _CheckSGroup = function(gid, idx, sid)
+		UI_CreateSquadKickerMessage(player,sid, message)
+	end
+	
+	SGroup_ForEach(sgroup, _CheckSGroup)
+
+end
+
+--? @shortdesc Enables or disables the FOW, including out of bound areas and all entities on the map
+--? @args Boolean enable
+--? @result Void
+function FOW_Enable(enable)
+	FOW_EnableTint(enable)
+	if enable then		
+		FOW_UnRevealAll()
+		Ghost_EnableSpotting()
+	else
+		Ghost_DisableSpotting()
+		FOW_RevealAll()		
+	end
+end
+
+--? @shortdesc Creates an event cue without a callback (you won't know when it's clicked)
+--? @args String iconPath, String soundPath, LocString title, LocString description[, Float lifetime, Boolean dismissOnClick]
+--? @result ID
+function UI_CreateEventCue(iconPath, soundPath, title, description, lifetime, dismissOnClick)
+
+	if description == nil then
+		description = 0
+	end
+	
+	if lifetime == nil then
+		lifetime = -1
+	end
+	
+	if dismissOnClick == nil then
+		dismissOnClick = false
+	end
+	
+	return UI_CreateEventCueNonClickable(iconPath, soundPath, title, description, lifetime, dismissOnClick)
+	
+end
+
+--? @shortdesc Creates and flashes an ability button on the taskbar if the unit is selected
+--? @extdesc Length parameter determines how long to flash the item, and the blueprint filter is used if 
+--?		certain squad types need to be selected before flashing the button.
+--? @args PlayerID playerid, AbilityID abilityID, LocString text, Integer length, [Table/Blueprint blueprint_filter]
+--? @result Void
+function UI_AddHintAndFlashAbility(player, ability, text, length, blueprint)
+	
+	if _t_internal_hint_manager == nil then
+		_t_internal_hint_manager = {}
+	end
+	
+	if length <= 0 then
+		fatal("Length of hint and flash cannot be less than one")
+	end
+	
+	if ability == nil then
+		fatal("Invalid ability")
+	end
+
+	local temp = {
+		
+		ability		= ability,
+		hint_id 	= nil,
+		flash_id 	= nil,
+		player		= player,
+		text		= text, 
+		length 		= length,
+		blueprint 	= blueprint,
+		selected	= false,
+		timer_id	= nil,
+	}
+	
+	table.insert(_t_internal_hint_manager, temp)
+	
+	sg_interal_hint_button = SGroup_CreateIfNotFound("sg_interal_hint_button")
+	
+	if Rule_Exists(_HintAndFlashButtonManager) == false then
+		Rule_AddInterval(_HintAndFlashButtonManager, 1.3)
+	end
+
+end
+
+
+function _HintAndFlashButtonManager()
+
+	for i=table.getn(_t_internal_hint_manager), 1, -1 do
+		this = _t_internal_hint_manager[i]
+		
+		if this.selected == false then
+			
+			SGroup_Clear(sg_interal_hint_button)
+			
+			if this.blueprint ~= nil then
+				Misc_GetSelectedSquads(sg_interal_hint_button, false)
+				SGroup_Filter(sg_interal_hint_button, this.blueprint, FILTER_KEEP)
+			end
+			
+			if this.blueprint == nil or SGroup_IsEmpty(sg_interal_hint_button) == false then
+				this.hint_id = HintPoint_AddToAbilityButton(this.ability, this.text, true)
+				this.flash_id = UI_FlashAbilityButton(this.ability, true, BT_GeneralPing )
+				this.timer_id = this.hint_id + 1000
+				Timer_Start(this.timer_id, this.length)
+				this.selected = true
+			end
+			
+		elseif Timer_GetRemaining(this.timer_id) <= 0 then
+			
+			if this.hint_id ~= nil then
+				HintPoint_Remove(this.hint_id)
+			end
+			
+			if this.flash_id ~= nil then
+				UI_StopFlashing(this.flash_id)
+			end
+			
+			table.remove(_t_internal_hint_manager, i)
+		end
+	end
+	
+	if table.getn(_t_internal_hint_manager) <= 0 then
+		Rule_RemoveMe()
+	end
+
+end
+
+--? @shortdesc Shows and Hides the UI related to Gameplay
+--? @extdesc Can be used to show and hide the UI panels related to gameplay (leaves intel events up)
+--? @args Boolean show
+--? @result Void
+function UI_ShowGameplay(boolean)
+
+	if boolean == false then
+		UI_ShowCoverOnNonSelectedUnits(false)
+		UI_ShowMiniMapPanel(false)
+		UI_ShowSelectionPanel(false)
+		UI_ShowObjectivesPanel(false)
+		UI_ShowSquadTabs(false)
+		UI_ShowDecorators(false)
+	elseif boolean == true then
+		UI_ShowCoverOnNonSelectedUnits(true)
+		UI_ShowMiniMapPanel(true)
+		UI_ShowSelectionPanel(true)
+		UI_ShowObjectivesPanel(true)
+		UI_ShowSquadTabs(true)
+		UI_ShowDecorators(true)
+	end
+end
+
