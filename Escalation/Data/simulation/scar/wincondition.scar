@@ -1,0 +1,414 @@
+import("ScarUtil.scar")
+import("Skirmish.scar")
+
+sk_WinCondition_VPHeartbeat_interval = 1.7 -- COH tick rate was 2.0, DoW2 was 1.4 before changing to a single VP, was 1.0 for a single VP
+sk_WinCondition_VPHeartbeat_fast_finish = false;
+
+sk_WinCondition_AnnihilateHeartbeat_finished_delay_ticks = 10 / sk_WinCondition_VPHeartbeat_interval -- approx 5 seconds;
+sk_WinCondition_AnnihilateHeartbeat_finished_ticks_count = 0; -- must be 0 if no-one has yet annihilated, > 0 otherwise
+
+--? @shortdesc Initialize the victory point win condition
+function WinCondition_StartupVictoryPoints()
+	Skirmish_Start()
+	
+	WinCondition_VPData = {}
+
+	for i = 1, World_GetPlayerCount() do
+		local player = World_GetPlayerAt( i )
+		local teamID = Player_GetTeam( player )
+		WinCondition_VPData[ teamID + 1 ] = 
+		{
+			teamID = teamID,
+			player = player,
+			tickerValue = Setup_GetVictoryPointTickerOption(),
+			VP_held = 0,
+			all_VP_held_beats = 0,
+			warning_name = "vp_team"..tostring(teamID + 1)
+		}
+	end	
+
+	Rule_AddInterval( WinCondition_VPHeartbeat, sk_WinCondition_VPHeartbeat_interval )
+	Rule_AddInterval( WinCondition_ConcessionSuccessfulVP, sk_WinCondition_VPHeartbeat_interval )
+end
+ 
+-- Callback to periodically update tickers and check for game victory.
+function WinCondition_VPHeartbeat()
+
+	-- if we already have a winner, do not update VP tickers 
+	if (sk_WinCondition_AnnihilateHeartbeat_finished_ticks_count > 0) then
+		return
+	end
+	
+	local max_VP = World_GetNumVictoryPoints()
+	local fast_finish_Threshold_beats = 90 / sk_WinCondition_VPHeartbeat_interval  -- approx 90 seconds
+	local fast_finish_Multiplier_start = 1.0 -- 1.2
+	local fast_finish_Multiplier_max = 1.0 -- 2
+	local fast_finish_Multiplier_rampup_beats = 40 / sk_WinCondition_VPHeartbeat_interval -- approx 40 seconds	
+	local fast_finish_Multiplier = 1.0
+	local fast_finish_previous = sk_WinCondition_VPHeartbeat_fast_finish;
+	
+	sk_WinCondition_VPHeartbeat_fast_finish = false;
+	
+	-- Update how many points each team holds and the maximum number of points held by any team.
+	local most_VP_held = -1
+	for idx, teamData in pairs(WinCondition_VPData) do
+		teamData.VP_held = Player_GetNumVictoryPoints( teamData.player )
+		if teamData.VP_held > most_VP_held then
+			most_VP_held = teamData.VP_held
+		end
+		
+		if (teamData.VP_held == max_VP) then
+			teamData.all_VP_held_beats = teamData.all_VP_held_beats + 1
+		else
+			teamData.all_VP_held_beats = 0
+		end
+		
+		if (teamData.all_VP_held_beats > fast_finish_Threshold_beats) then
+			sk_WinCondition_VPHeartbeat_fast_finish = true
+			fast_finish_Multiplier = fast_finish_Multiplier_max - fast_finish_Multiplier_start 
+			fast_finish_Multiplier = fast_finish_Multiplier * 
+				math.min(1, (teamData.all_VP_held_beats - fast_finish_Threshold_beats) / fast_finish_Multiplier_rampup_beats)
+			fast_finish_Multiplier = fast_finish_Multiplier + fast_finish_Multiplier_start
+		end
+	end
+	
+	-- Drain ticker points from teams based on how many points they hold
+	local gameOver = false
+	local winningTeamData = nil
+	local losingTeamData = nil
+
+	for idx, teamData in pairs(WinCondition_VPData) do
+		-- ticker drain is how many victory points you lose 
+		local ticker_drain = most_VP_held - teamData.VP_held
+		local old_ticker_value = teamData.tickerValue
+		
+		ticker_drain = ticker_drain - math.max(0, ticker_drain - 2) / 2
+		
+		if (sk_WinCondition_VPHeartbeat_fast_finish) then
+			ticker_drain = ticker_drain * fast_finish_Multiplier
+		end
+		
+		teamData.tickerValue = math.max( 0, teamData.tickerValue - ticker_drain )
+		
+		if teamData.tickerValue == 0 then
+			gameOver = true
+		else
+			if winningTeamData ~= nil then
+				if teamData.tickerValue > winningTeamData.tickerValue then
+					winningTeamData = teamData
+				end
+			else
+				winningTeamData = teamData
+			end
+			
+			if  losingTeamData ~= nil then
+				if  teamData.tickerValue < losingTeamData.tickerValue then
+					losingTeamData = teamData
+				end
+			else
+				losingTeamData = teamData
+			end
+		end
+		
+		WinWarning_SetTickerUpdated( teamData.teamID, math.ceil(old_ticker_value), math.ceil(teamData.tickerValue))
+		
+		if not WinWarning_Exists( teamData.warning_name ) then
+			WinWarning_Add( teamData.warning_name, World_GetPlayerAt(1), "", "", Loc_Empty() )
+		end
+		
+		WinWarning_SetTextAndNumber( teamData.warning_name, Loc_ConvertNumber(math.ceil(teamData.tickerValue)), math.ceil(teamData.tickerValue) )
+	end
+	
+	-- notify fast_finish (during and end)
+	if (fast_finish_previous or sk_WinCondition_VPHeartbeat_fast_finish) then
+		WinWarning_FastFinishUpdate(fast_finish_Multiplier)
+	end
+	
+	-- End the game, if we need to.
+ 	if gameOver == true then
+ 		Rule_RemoveAll()
+ 		if winningTeamData ~= nil then
+			World_SetTeamWin( winningTeamData.player, "vpticker" )
+		end
+		World_SetGameOver()
+	elseif winningTeamData ~= nil and losingTeamData ~= nil then
+		WinWarning_UpdateTickerWinningAndLosing( winningTeamData.teamID, math.floor(winningTeamData.tickerValue), losingTeamData.teamID, math.floor(losingTeamData.tickerValue) )
+	end
+end
+
+
+--? @shortdesc Remove all Victory Point objects; use this if you don't need VP objects for your win condition.
+function WinCondition_RemoveAllVictoryPoints()
+	local count = World_GetNumEntities()
+	for i = 0, (count-1) do
+		local entity = World_GetEntity( i )	
+		if Entity_IsVictoryPoint( entity ) then
+			Entity_Delete( entity )
+		end
+	end
+end
+
+
+--? @shortdesc Startup the annihilate win condition
+function WinCondition_StartupAnnihilate()
+	Skirmish_Start()
+	
+	-- Annihilate requires a HQ for each player
+	local count = World_GetPlayerCount()
+	local player_win = nil
+	local team_alive = -1	
+	for i = 1, count do
+		local player = World_GetPlayerAt(i)
+		local teamID = Player_GetTeam( player )
+	
+		-- If there's an hq alive, then our team is alive.
+		local hasHQ = false
+		function testHQ( egroup, eIndex, entity )
+			if Entity_IsOfType( entity, "hq" ) and Entity_IsAlive( entity ) then
+				hasHQ = true
+				return true -- Stop searching....
+			end
+			return false
+		end
+		EGroup_ForEach( Player_GetEntities( player ), testHQ )
+		if hasHQ == false then
+			return
+		end
+	end
+	
+	Rule_AddInterval( WinCondition_AnnihilateHeartbeat, 2 )
+	Rule_AddInterval( WinCondition_ConcessionSuccessful, 2 )
+	Rule_AddEvent( WinCondition_AnnihilateHeartbeat, GE_PlayerKilled )
+	Rule_AddEvent( WinCondition_AnnihilateHeartbeat, GE_EntityKilled )
+end
+
+
+-- Check for an annihilate victory
+function WinCondition_AnnihilateHeartbeat()
+	local count = World_GetPlayerCount()
+	local player_win = nil
+	local team_alive = -1
+	
+	for i = 1, count do
+		local player = World_GetPlayerAt(i)
+		local teamID = Player_GetTeam( player )
+	
+		-- If there's an hq alive, then our team is alive.
+		local hasHQ = false
+		function testHQ( egroup, eIndex, entity )
+			if Entity_IsOfType( entity, "hq" ) and Entity_IsAlive( entity ) then
+				hasHQ = true
+				return true -- Stop searching....
+			end
+			return false
+		end
+		EGroup_ForEach( Player_GetEntities( player ), testHQ )
+		
+		if hasHQ then
+			if team_alive == -1 then
+				team_alive = teamID
+				player_win = player
+			elseif team_alive ~= teamID then
+				player_win = nil
+			end
+		end
+	end
+	
+	-- increment count if finished
+	if team_alive == -1 or player_win ~= nil then
+		sk_WinCondition_AnnihilateHeartbeat_finished_ticks_count = sk_WinCondition_AnnihilateHeartbeat_finished_ticks_count + 1;
+	end
+
+	-- wait for delay, early out 
+	if (sk_WinCondition_AnnihilateHeartbeat_finished_ticks_count < sk_WinCondition_AnnihilateHeartbeat_finished_delay_ticks) then
+		return
+	end
+	
+	-- If there's a player who wins, then make them win.
+	if player_win ~= nil then
+		World_SetTeamWin( player_win, "annihilate" );
+	end
+	-- If someone wins, or there are no teams alive, end the game!
+	if team_alive == -1 or player_win ~= nil then
+		World_SetGameOver();
+	end
+end
+
+-- used by WinCondition_GetVPTickets in AILuaUtil
+function VPTicker_GetTeamTickers(teamID)
+	if (teamID < 0 or teamID >= table.getn(WinCondition_VPData)) then
+		return 1
+	else
+		return WinCondition_VPData[ teamID + 1 ].tickerValue
+	end
+end
+
+--? @shortdesc Initialize the FFA win condition
+function WinCondition_StartupFFA()
+	Skirmish_Start()
+	
+	WinCondition_VPData = {}
+
+	for i = 1, World_GetPlayerCount() do
+		local player = World_GetPlayerAt( i )
+		local teamID = Player_GetTeam( player )
+		WinCondition_VPData[ teamID + 1 ] = 
+		{
+			teamID = teamID,
+			player = player,
+			tickerValue = 0,
+			VP_held = 0,
+			all_VP_held_beats = 0,
+			warning_name = "vp_team"..tostring(teamID + 1)
+		}
+	end	
+
+	Rule_AddInterval( WinCondition_FFAHeartbeat, sk_WinCondition_VPHeartbeat_interval )
+	Rule_AddInterval( WinCondition_ConcessionSuccessfulFFA, sk_WinCondition_VPHeartbeat_interval )
+end
+
+-- Callback to periodically update tickers and check for game victory.
+function WinCondition_FFAHeartbeat()
+
+	-- if we already have a winner, do not update VP tickers 
+	if (sk_WinCondition_AnnihilateHeartbeat_finished_ticks_count > 0) then
+		return
+	end
+	
+	local max_VP_ticks = Setup_GetVictoryPointTickerOption()
+	local max_VP = World_GetNumVictoryPoints()
+	local fast_finish_Threshold_beats = 90 / sk_WinCondition_VPHeartbeat_interval  -- approx 90 seconds
+	local fast_finish_Multiplier_start = 1.0 -- 1.2
+	local fast_finish_Multiplier_max = 1.0 -- 2
+	local fast_finish_Multiplier_rampup_beats = 40 / sk_WinCondition_VPHeartbeat_interval -- approx 40 seconds	
+	local fast_finish_Multiplier = 1.0
+	local fast_finish_previous = sk_WinCondition_VPHeartbeat_fast_finish;
+	
+	sk_WinCondition_VPHeartbeat_fast_finish = false;
+	
+	-- Update how many points each team holds and the maximum number of points held by any team.
+	local most_VP_held = -1
+	for idx, teamData in pairs(WinCondition_VPData) do
+		teamData.VP_held = Player_GetNumVictoryPoints( teamData.player )
+		if teamData.VP_held > most_VP_held then
+			most_VP_held = teamData.VP_held
+		end
+		
+		if (teamData.VP_held == max_VP) then
+			teamData.all_VP_held_beats = teamData.all_VP_held_beats + 1
+		else
+			teamData.all_VP_held_beats = 0
+		end
+		
+		if (teamData.all_VP_held_beats > fast_finish_Threshold_beats) then
+			sk_WinCondition_VPHeartbeat_fast_finish = true
+			fast_finish_Multiplier = fast_finish_Multiplier_max - fast_finish_Multiplier_start 
+			fast_finish_Multiplier = fast_finish_Multiplier * 
+				math.min(1, (teamData.all_VP_held_beats - fast_finish_Threshold_beats) / fast_finish_Multiplier_rampup_beats)
+			fast_finish_Multiplier = fast_finish_Multiplier + fast_finish_Multiplier_start
+		end
+	end
+	
+	-- Add ticker points to teams based on how many points they hold
+	local gameOver = false
+	local winningTeamData = nil
+	local losingTeamData = nil
+
+	for idx, teamData in pairs(WinCondition_VPData) do
+		-- ticker_increase is how many victory points you gain 
+		local ticker_increase = teamData.VP_held
+		local old_ticker_value = teamData.tickerValue
+		
+		--ticker_increase = ticker_increase + math.max(0, ticker_increase - 2) / 2 -- do we still want this weird math stuff
+		
+		if (sk_WinCondition_VPHeartbeat_fast_finish) then
+			ticker_increase = ticker_increase * fast_finish_Multiplier
+		end
+		
+		teamData.tickerValue = math.max( 0, teamData.tickerValue + ticker_increase )
+		
+		if teamData.tickerValue >= max_VP_ticks then
+			teamData.tickerValue = max_VP_ticks
+			winningTeamData = teamData
+			gameOver = true
+		end
+		
+		WinWarning_SetTickerUpdated( teamData.teamID, math.ceil(old_ticker_value), math.ceil(teamData.tickerValue))
+		
+		if not WinWarning_Exists( teamData.warning_name ) then
+			WinWarning_Add( teamData.warning_name, World_GetPlayerAt(1), "", "", Loc_Empty() )
+		end
+		
+		WinWarning_SetTextAndNumber( teamData.warning_name, Loc_ConvertNumber(math.ceil(teamData.tickerValue)), math.ceil(teamData.tickerValue) )
+	end
+	
+	-- notify fast_finish (during and end)
+	if (fast_finish_previous or sk_WinCondition_VPHeartbeat_fast_finish) then
+		WinWarning_FastFinishUpdate(fast_finish_Multiplier)
+	end
+	
+	-- End the game, if we need to.
+ 	if gameOver == true then
+ 		Rule_RemoveAll()
+ 		if winningTeamData ~= nil then
+			World_SetTeamWin( winningTeamData.player, "ffa-solo" )
+		end
+		print( "FFA - Game Over" )
+		World_SetGameOver()
+	else
+		for idx, teamData in pairs(WinCondition_VPData) do
+			if teamData ~= nil then
+				--print( "Team: " .. tostring(teamData.teamID) .. "Ticker Score: " .. tostring(teamData.tickerValue) )
+				WinWarning_UpdateTeamTicker( teamData.teamID, math.floor(teamData.tickerValue) )
+			end
+		end
+	end
+end
+
+-- Check for Successful Concession in Annihilate Game Type
+function WinCondition_ConcessionSuccessful()
+	local isConceded = World_HasTeamConceded()
+	
+	if isConceded == false then
+		return
+	end
+	
+	local player = World_GetPlayerAt( World_ConcessionWinningPlayerSlot() )
+	
+	if player ~= nil then
+		World_SetTeamWin( player, "annihilate" );
+		World_SetGameOver();
+	end
+end
+
+-- Check for Successful Concession in VP Game Type
+function WinCondition_ConcessionSuccessfulVP()
+	local isConceded = World_HasTeamConceded()
+	
+	if isConceded == false then
+		return
+	end
+	
+	local player = World_GetPlayerAt( World_ConcessionWinningPlayerSlot() )
+	
+	if player ~= nil then
+		World_SetTeamWin( player, "vpticker" );
+		World_SetGameOver();
+	end
+end
+
+-- Check for Successful Concession in VP Game Type
+function WinCondition_ConcessionSuccessfulFFA()
+	local isConceded = World_HasTeamConceded()
+	
+	if isConceded == false then
+		return
+	end
+	
+	local player = World_GetPlayerAt( World_ConcessionWinningPlayerSlot() )
+	
+	if player ~= nil then
+		World_SetTeamWin( player, "ffa-solo" );
+		World_SetGameOver();
+	end
+end

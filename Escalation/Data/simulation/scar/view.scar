@@ -1,0 +1,311 @@
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--
+-- VIEW
+-- Provides an on-screen interface for looking at variables in the game context
+--
+-- (c) 2005 Relic Entertainment
+--
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+
+function View_Init()
+	dr_clear("view")
+	dr_setautoclear("view", false)
+	dr_setdisplay("view", true)
+	
+	if ( Scar_DebugConsoleExecute ) then
+		Scar_DebugConsoleExecute("bind([[NUMPAD8]], [[Scar_DoString('View_UpArrow()')]])")
+		Scar_DebugConsoleExecute("bind([[NUMPAD2]], [[Scar_DoString('View_DownArrow()')]])")
+		Scar_DebugConsoleExecute("bind([[NUMPAD4]], [[Scar_DoString('View_LeftArrow()')]])")
+		Scar_DebugConsoleExecute("bind([[NUMPAD6]], [[Scar_DoString('View_RightArrow()')]])")
+		Scar_DebugConsoleExecute("bind([[NUMPAD5]], [[Scar_DoString('View_Focus()')]])")
+	end
+		
+	_view_display = false
+	_view_current_selection = nil
+end
+
+Scar_AddInit(View_Init)
+
+
+
+
+
+
+function view(item)
+
+	if (item == nil) then
+		_view_internal_item = nil
+		if Rule_Exists(View_Manager) then
+			Rule_Remove(View_Manager)
+			dr_clear("view")
+		end
+	else
+		_view_internal_item = item
+		_view_cursor = {1}
+		_view_cursormax = {1}
+		
+		if not Rule_Exists(View_Manager) then
+			Rule_Add(View_Manager, 10)
+		end
+		View_Manager()
+	end
+	
+end
+
+
+
+
+function View_UpArrow()
+	if (_view_internal_item ~= nil) then
+		local currentpos = _view_cursor[table.getn(_view_cursor)]
+		local currentmax = _view_cursormax[table.getn(_view_cursor)]
+		currentpos = currentpos - 1
+		if currentpos == 0 then
+			currentpos = currentmax
+		end
+		_view_cursor[table.getn(_view_cursor)] = currentpos
+		View_Manager()
+	end
+end
+
+function View_DownArrow()
+	if (_view_internal_item ~= nil) then
+		local currentpos = _view_cursor[table.getn(_view_cursor)]
+		local currentmax = _view_cursormax[table.getn(_view_cursor)]
+		currentpos = currentpos + 1
+		if currentpos > currentmax then
+			currentpos = 1
+		end
+		_view_cursor[table.getn(_view_cursor)] = currentpos
+		View_Manager()
+	end
+end
+
+function View_RightArrow()
+	if (_view_internal_item ~= nil) then
+		local currentmax = _view_cursormax[table.getn(_view_cursor)]
+		if (currentmax ~= 0) then
+			table.insert(_view_cursor, 1)
+			table.insert(_view_cursormax, 0)
+		end
+		View_Manager()
+	end
+end
+
+function View_LeftArrow()
+	if (_view_internal_item ~= nil) then
+		if (table.getn(_view_cursor) > 1) then
+			table.remove(_view_cursor)
+			table.remove(_view_cursormax)
+		end
+		View_Manager()
+	end
+end
+
+function View_Focus()
+	if (_view_current_selection ~= nil) then
+		Camera_SetTarget(Util_GetPosition(_view_current_selection), true)
+	end
+end
+
+function View_ToggleDisplay()
+	if Rule_Exists(View_Manager) then
+		Rule_Remove(View_Manager)
+		dr_clear("view")
+	else
+		Rule_Add(View_Manager, 10)
+	end
+end
+
+
+
+function View_Manager()
+
+	dr_clear("view")
+	View_DrawItem(_view_internal_item, 0.02, 0.02, 1)
+	
+end
+
+
+function View_DrawItem(item, xpos, ypos, column)
+
+	-- make a record of the number of items in this table (0 if it isn't a table)
+	_view_cursormax[column] = 0
+
+	-- draw the item's type on the screen
+	--local types = {"NIL", "BOOLEAN", "NUMBER", "STRING", "TABLE", "FUNCTION", "POSITION", "EGROUP", "ENTITY", "SGROUP", "SQUAD", "PLAYER", "MARKER"}
+	dr_text2d("view", xpos, ypos, scartype_tostring(item), 255, 255, 255)
+	
+	_view_current_selection = nil
+	
+	-- draw the item
+	if (scartype(item) == ST_MARKER) then
+		
+		_view_current_selection = item
+		local pos = Marker_GetPosition(item)
+		
+		-- debug draw the marker's centre and proximity ring
+		dr_drawline( World_Pos(pos.x-1, pos.y+0.1, pos.z-1), World_Pos(pos.x+1, pos.y+0.1, pos.z+1), 180, 180, 255, "view" )
+		dr_drawline( World_Pos(pos.x-1, pos.y+0.1, pos.z+1), World_Pos(pos.x+1, pos.y+0.1, pos.z-1), 180, 180, 255, "view" )
+		dr_terraincircle(pos, Marker_GetProximityRadius(item), 180, 180, 255, 24, "view")
+		
+		-- menu text
+		dr_text2d("view", xpos, ypos+0.02, "Name:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, Marker_GetName(item), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.04, "Pos:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.04, " x:"..string.format("%.2f", pos.x).." y:"..string.format("%.2f", pos.y).." z:"..string.format("%.2f", pos.z), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.06, "Prox:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.06, Marker_GetProximityRadius(item), 180, 180, 255)
+		
+	elseif (scartype(item) == ST_SCARPOS) then
+		
+		_view_current_selection = item
+		
+		-- debug draw the position
+		dr_drawline( World_Pos(item.x-1, item.y+0.1, item.z-1), World_Pos(item.x+1, item.y+0.1, item.z+1), 180, 180, 255, "view" )
+		dr_drawline( World_Pos(item.x-1, item.y+0.1, item.z+1), World_Pos(item.x+1, item.y+0.1, item.z-1), 180, 180, 255, "view" )
+		
+		-- menu text
+		dr_text2d("view", xpos, ypos+0.02, "Pos:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, " x:"..string.format("%.2f", item.x).." y:"..string.format("%.2f", item.y).." z:"..string.format("%.2f", item.z), 180, 180, 255)
+		
+	elseif (scartype(item) == ST_SGROUP) then
+		
+		_view_current_selection = item
+		
+		-- debug draw circles around each squad member, and mark each squad position
+		for i = 1, SGroup_CountSpawned(item) do
+			local squad = SGroup_GetSpawnedSquadAt(item, i)
+			local pos = Squad_GetPosition(squad)
+			dr_drawline( World_Pos(pos.x-0.25, pos.y+0.1, pos.z-0.25), World_Pos(pos.x+0.25, pos.y+0.1, pos.z+0.25), 180, 180, 255, "view" )
+			dr_drawline( World_Pos(pos.x-0.25, pos.y+0.1, pos.z+0.25), World_Pos(pos.x+0.25, pos.y+0.1, pos.z-0.25), 180, 180, 255, "view" )
+			for n = 1, Squad_Count(squad) do
+				local entity = Squad_EntityAt(squad, n-1)
+				dr_terraincircle(Entity_GetPosition(entity), 1.5 * Entity_GetRadius(entity), 180, 180, 255, 16, "view")
+			end
+		end
+		
+		-- menu text
+		dr_text2d("view", xpos, ypos+0.02, "Name:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, SGroup_GetName(item), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.04, "Squads:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.04, SGroup_CountSpawned(item).." Spawned    "..SGroup_CountDeSpawned(item).." Despawned", 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.06, "Members:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.06, SGroup_TotalMembersCount(item), 180, 180, 255)
+		
+	elseif (scartype(item) == ST_EGROUP) then
+		
+		_view_current_selection = item
+		
+		-- debug draw circles around each entity, and give a spawned / despawned count
+		for i = 1, EGroup_CountSpawned(item) do
+			local entity = EGroup_GetSpawnedEntityAt(item, i)
+			dr_terraincircle(Entity_GetPosition(entity), 1.5 * Entity_GetRadius(entity), 180, 180, 255, 16, "view")
+		end
+		
+		-- menu text
+		dr_text2d("view", xpos, ypos+0.02, "Name:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, EGroup_GetName(item), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.04, "Entities:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.04, EGroup_CountSpawned(item).." Spawned    "..EGroup_CountDeSpawned(item).." Despawned", 180, 180, 255)
+		
+	elseif (scartype(item) == ST_SQUAD) then
+		
+		_view_current_selection = item
+		local pos = Squad_GetPosition(item)
+		
+		-- debug draw circles around squad
+		dr_drawline( World_Pos(pos.x-0.25, pos.y+0.1, pos.z-0.25), World_Pos(pos.x+0.25, pos.y+0.1, pos.z+0.25), 180, 180, 255, "view" )
+		dr_drawline( World_Pos(pos.x-0.25, pos.y+0.1, pos.z+0.25), World_Pos(pos.x+0.25, pos.y+0.1, pos.z-0.25), 180, 180, 255, "view" )
+		
+		for n = 1, Squad_Count(item) do
+			local entity = Squad_EntityAt(item, n-1)
+			dr_terraincircle(Entity_GetPosition(entity), 1.5 * Entity_GetRadius(entity), 180, 180, 255, 16, "view")
+		end
+		
+		-- menu text
+		dr_text2d("view", xpos, ypos+0.02, "Blueprint:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, Squad_GetBlueprintName(item), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.04, "Members:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.04, Squad_Count(item), 180, 180, 255)
+		
+	elseif (scartype(item) == ST_ENTITY) then
+		
+		_view_current_selection = item
+		
+		-- debug draw circle around entity
+		dr_terraincircle(Entity_GetPosition(item), 1.5 * Entity_GetRadius(item), 180, 180, 255, 16, "view")
+		
+		-- menu text
+		dr_text2d("view", xpos, ypos+0.02, "Blueprint:", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, Entity_GetBlueprintName(item), 180, 180, 255)
+		
+	elseif (scartype(item) == ST_TABLE) then
+		
+		local delta = 0.02
+		local row = 0
+		
+		local _TableEntry = function(k, v)
+			
+			row = row + 1
+			
+			if (row == _view_cursor[column]) then
+				dr_text2d("view", xpos, ypos+delta, k, 255, 255, 255)
+				dr_text2d("view", xpos+0.055, ypos+delta, ">", 255, 255, 255)
+				if (column == table.getn(_view_cursor)) then
+					dr_text2d("view", xpos+0.065, ypos+delta, scartype_tostring(v), 255, 255, 255)
+				else
+					View_DrawItem(item[k], xpos+0.065, ypos+delta, column+1)
+				end
+			else
+				dr_text2d("view", xpos, ypos+delta, k, 180, 180, 255)
+				if (column == table.getn(_view_cursor)) then
+					dr_text2d("view", xpos+0.065, ypos+delta, scartype_tostring(v), 180, 180, 255)
+				end
+			end
+			
+			delta = delta + 0.02
+			
+		end
+		
+		table.foreach(item, _TableEntry)
+		_view_cursormax[column] = row
+		
+	elseif (scartype(item) == ST_PLAYER) then
+		
+		dr_text2d("view", xpos, ypos+0.02, "Player: ", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, World_GetPlayerIndex(item), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.04, "Team: ", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.04, Player_GetTeam(item), 180, 180, 255)
+		dr_text2d("view", xpos, ypos+0.06, "Personnel: ", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.06, Player_GetCurrentPopulation(item, CT_Personnel).."/"..Player_GetMaxPopulation(item, CT_Personnel), 180, 180, 255)		
+		dr_text2d("view", xpos, ypos+0.08, "Vehicles: ", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.08, Player_GetCurrentPopulation(item, CT_Vehicle).."/"..Player_GetMaxPopulation(item, CT_Vehicle), 180, 180, 255)		
+		
+	elseif (scartype(item) == ST_STRING) then
+		
+		dr_text2d("view", xpos, ypos+0.02, "Text: ", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, item, 180, 180, 255)
+		
+	elseif (scartype(item) == ST_NUMBER) then
+		
+		dr_text2d("view", xpos, ypos+0.02, "Value: ", 180, 180, 255)
+		dr_text2d("view", xpos+0.06, ypos+0.02, item, 180, 180, 255)
+		
+	elseif (scartype(item) == ST_BOOLEAN) then
+		
+		dr_text2d("view", xpos, ypos+0.02, "Value: ", 180, 180, 255)
+		if (item == true) then
+			dr_text2d("view", xpos+0.06, ypos+0.02, "true", 180, 180, 255)
+		elseif (item == false) then
+			dr_text2d("view", xpos+0.06, ypos+0.02, "false", 180, 180, 255)
+		end
+		
+	elseif (scartype(item) == ST_NIL) then
+		
+	end
+	
+end
