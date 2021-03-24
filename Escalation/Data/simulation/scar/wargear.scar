@@ -1,0 +1,48 @@
+--? @group World
+
+--? @shortdesc Drops a piece of wargear at the specified target
+--? @args PlayerID playerToDropWargearFor, String wargearName, MarkerID/ScarPosition target
+--? @result Void
+function World_DropWargear(playerToDropWargearFor, wargearName, target)
+	if scartype(target) ~= ST_MARKER
+		and scartype(target) ~= ST_SCARPOS then
+		error("World_DropWargear expects a MarkerID or ScarPositionfor its target, received a "..tostring(scartype(target)))
+	end
+	
+	-- if we were passed in a marker, convert it to a pos
+	if scartype(target) == ST_MARKER then
+		target = Marker_GetPosition(target)
+	end
+	
+	World_DropWargearAtPosition(playerToDropWargearFor, wargearName, target)
+end
+
+--? @shortdesc Pickup every dropped piece of wargear by given player
+--? @args PlayerID player
+--? @result Void
+function Player_PickupAllWargear(player)
+	local eg_wargear = Player_GetWargearDropEntities(player)
+	
+	local function _PickupWargear(gid, idx, eid)
+		Player_WargearPickup(player, eid)
+	end
+	
+	EGroup_ForEach(eg_wargear, _PickupWargear)
+end
+
+function World_DropWargearAtMousePositionForCurrentPlayer(wargearName)
+	World_DropWargear(Player_FromId(Misc_GetLocalPlayerID()), wargearName, Misc_GetMouseOnTerrain())
+end
+
+function SGroup_EquipWargearOnSelectedSquads( wargearName )
+
+	--create an sgroup
+	local sg_selectedSquadsWargear = SGroup_CreateIfNotFound("sg_selectedSquadsWargear")
+	
+	--add selected squads to the group
+	Misc_GetSelectedSquads(sg_selectedSquadsWargear, false)
+	
+	--give them the wargear
+	SGroup_EquipWargear(sg_selectedSquadsWargear, wargearName)
+	
+end 
