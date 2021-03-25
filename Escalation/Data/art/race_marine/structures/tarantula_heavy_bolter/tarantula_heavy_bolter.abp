@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Tarantula_Heavy_Bolter",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "psyker_stratagem",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

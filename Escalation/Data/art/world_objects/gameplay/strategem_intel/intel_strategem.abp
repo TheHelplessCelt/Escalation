@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "intel_strategem",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

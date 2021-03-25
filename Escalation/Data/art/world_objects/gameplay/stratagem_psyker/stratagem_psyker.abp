@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Stratagem_Psyker",
+    "Stratagem_Psyker_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Imperial_communications_tower_02",
+    "Imperial_communications_tower_02_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

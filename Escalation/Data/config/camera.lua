@@ -31,7 +31,7 @@ DefaultDistance = 90
 --Minimum distance from the target for the camera
 MinimumDistance = 1.1
 --Maximum distance from the target for the camera
-MaximumDistance = 100
+MaximumDistance = 110
 
 --Controls how quickly the camera transitions when double clicking on the map and reseting the camera to default
 PositionTransitionSpeed = 400
