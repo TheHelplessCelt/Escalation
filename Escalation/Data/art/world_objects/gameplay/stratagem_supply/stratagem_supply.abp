@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "stratagem_supply",
+    "stratagem_supply_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 1
+}

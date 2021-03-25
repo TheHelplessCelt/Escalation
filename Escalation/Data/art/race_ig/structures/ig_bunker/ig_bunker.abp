@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "IG_Bunker",
+    "IG_Bunker_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 1
+}

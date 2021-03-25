@@ -1,0 +1,735 @@
+----------------------------------------------------------------------------------------------------------------
+-- Player helper functions
+-- (c) 2003 Relic Entertainment Inc.
+
+import("GroupCallers.scar")
+
+----------------------------------------------------------------------------------------------------------------
+-- Private Implementation
+_Player_Private = {
+
+	__skipsave = true,
+
+	-- get all player squads/entities in proximity to a point and add the to the target group
+	GetAllNearPoint = function( player, targetgroup, point, prox )
+		
+		if ( scartype( targetgroup ) == ST_EGROUP ) then
+		
+			World_GetEntitiesNearPoint( player, targetgroup, point, prox, OT_Player )
+			
+		elseif ( scartype( targetgroup ) == ST_SGROUP ) then
+		
+			World_GetSquadsNearPoint( player, targetgroup, point, prox, OT_Player )
+			
+		end
+
+	end,
+	
+	-- get all player squads/entities in proximity to a point and add the to the target group
+	GetAllNearMarker = function( player, targetgroup, marker )
+		
+		if ( scartype( targetgroup ) == ST_EGROUP ) then
+		
+			World_GetEntitiesNearMarker( player, targetgroup, marker, OT_Player )
+			
+		elseif ( scartype( targetgroup ) == ST_SGROUP ) then
+		
+			World_GetSquadsNearMarker( player, targetgroup, marker, OT_Player )
+			
+		end
+
+	end,
+	
+	-- get all player squads/entities in the territory sector and add the to the target group
+	GetAllWithinTerritorySector = function( player, targetgroup, sectorID )
+		
+		if ( scartype( targetgroup ) == ST_EGROUP ) then
+		
+			World_GetEntitiesWithinTerritorySector( player, targetgroup, sectorID, OT_Player )
+			
+		elseif ( scartype( targetgroup ) == ST_SGROUP ) then
+		
+			World_GetSquadsWithinTerritorySector( player, targetgroup, sectorID, OT_Player )
+			
+		end
+
+	end,
+	
+	-- Creates a new group if one doesnt already exist
+	CreateGroupIfNotFound = function( groupname, groupcaller )
+
+		if( groupcaller.Exists( groupname ) ) then
+			return groupcaller.FromName( groupname )
+		else
+			return groupcaller.Create( groupname )
+		end
+		
+	end
+}
+
+----------------------------------------------------------------------------------------------------------------
+-- Functions
+
+--? @group Player
+
+--? @shortdesc Returns true if the players are allied and false if they are not.
+--? @result Boolean
+--? @args PlayerID playerId1, PlayerID playerId2
+function Player_IsAllied(playerId1, playerId2)
+	local relationship = Player_GetRelationship(playerId1, playerId2)
+	local result = (relationship == R_ALLY or relationship == R_NEUTRAL)
+	return result
+end
+
+
+--? @shortdesc Returns true if this player owns any buildings. (with exclusions).
+--? @args PlayerID playerId, Blueprint/ID/Table exceptions-entitytypes
+--? @result boolean
+function Player_HasBuildingsExcept( player, ebplist )
+	
+	-- if passed in a single item, put it in a table
+	if scartype(ebplist) ~= ST_TABLE then
+		ebplist = {ebplist}
+	end
+	
+	-- convert all EBP strings to IDs
+	for n = 1, table.getn(ebplist) do
+		if scartype(ebplist[n]) == ST_STRING then
+			ebplist[n] = World_GetPropertyBagGroupID(ebplist[n])
+		end
+	end
+	
+	-- function to check if one entity is in the list
+	local IsTargetBuilding = function(gid, idx, eid)
+		if Entity_IsBuilding(eid) then
+			for n = 1, table.getn(ebplist) do
+				if Entity_GetBlueprintID(eid) == ebplist[n] then
+					return false
+				end
+			end
+			return true
+		end
+	end
+	
+	-- count all buildings in players egroup
+	local egroupID = Player_GetEntities( player )
+	return EGroup_ForEachAllOrAny( egroupID, ANY, IsTargetBuilding ) -- are any of the players entities buildings?
+	
+end
+
+
+--? @shortdesc Returns true if this player owns any buildings listed in the table.
+--? @extdesc This only looks at completed buildings - use Player_HasBuildingUnderConstruction to see if the player is building something
+--? @args PlayerID player, Blueprint/ID/Table entitytypes
+--? @result boolean
+function Player_HasBuilding(player, ebplist)
+	
+	-- if passed in a single item, put it in a table
+	if scartype(ebplist) ~= ST_TABLE then
+		ebplist = {ebplist}
+	end
+	
+	-- convert all EBP strings to IDs
+	for n = 1, table.getn(ebplist) do
+		if scartype(ebplist[n]) == ST_STRING then
+			ebplist[n] = World_GetPropertyBagGroupID(ebplist[n])
+		end
+	end
+	
+	-- function to check if one entity is in the list
+	local IsTargetBuilding = function(gid, idx, eid)
+		if Entity_IsBuilding(eid) then
+			if Entity_GetBuildingProgress(eid) == 1.0 then
+				for n = 1, table.getn(ebplist) do
+					if Entity_GetBlueprintID(eid) == ebplist[n] then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+	
+	-- count all buildings in players egroup
+	local egroupID = Player_GetEntities( player )
+	return EGroup_ForEachAllOrAny( egroupID, ANY, IsTargetBuilding ) -- are any of the players entities buildings?
+	
+end
+
+
+--? @shortdesc Returns true if this player owns any buildings listed in the table currently under construction.
+--? @args PlayerID player, Blueprint/ID/Table entitytypes
+--? @result boolean
+function Player_HasBuildingUnderConstruction(player, ebplist)
+	
+	-- if passed in a single item, put it in a table
+	if scartype(ebplist) ~= ST_TABLE then
+		ebplist = {ebplist}
+	end
+	
+	-- convert all EBP strings to IDs
+	for n = 1, table.getn(ebplist) do
+		if scartype(ebplist[n]) == ST_STRING then
+			ebplist[n] = World_GetPropertyBagGroupID(ebplist[n])
+		end
+	end
+	
+	-- function to check if one entity is in the list
+	local IsTargetBuilding = function(gid, idx, eid)
+		if Entity_IsBuilding(eid) then
+			if Entity_GetBuildingProgress(eid) < 1.0 then
+				for n = 1, table.getn(ebplist) do
+					if Entity_GetBlueprintID(eid) == ebplist[n] then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+	
+	-- count all buildings in players egroup
+	local egroupID = Player_GetEntities( player )
+	return EGroup_ForEachAllOrAny( egroupID, ANY, IsTargetBuilding ) -- are any of the players entities buildings?
+	
+end
+
+
+--? @shortdesc Returns the total number of buildings owned by this player.
+--? @args PlayerID playerId
+--? @result Integer
+function Player_GetBuildingsCount( player )
+	local entity_count = Player_GetEntityCount(player);
+	local player_race = Player_GetRace(player);
+	local building_count = World_GetPossibleBuildingsCount(player_race);
+	
+	local count = 0;
+	
+	for i = 0, entity_count - 1 do
+		for j = 0, building_count - 1 do
+			if( Player_GetEntityName(player, i) == World_GetPossibleBuildingsName(player_race, j) ) then
+				count = count + 1;
+			end
+		end
+	end
+	
+	return count;
+end
+
+
+--? @shortdesc Returns the total number of buildings owned by this player (with exclusions).
+--? @args PlayerID playerId, Table exceptions
+--? @result Integer
+function Player_GetBuildingsCountExcept( player, exceptions )
+	local entity_count = Player_GetEntityCount(player);
+	local player_race = Player_GetRace(player);
+	local building_count = World_GetPossibleBuildingsCount(player_race);
+	
+	local found_buildings = {};
+	
+	local count = 0;
+	
+	for i = 0, entity_count - 1 do
+		for j = 0, building_count - 1 do
+			local name = Player_GetEntityName(player, i);
+			if( name == World_GetPossibleBuildingsName(player_race, j) ) then
+				count = count + 1;
+				found_buildings[count] = name
+			end
+		end
+	end
+	
+	-- find the exceptions
+	for name in found_buildings do
+		for exception_name in exceptions do
+			if( name == exception_name ) then
+				count = count - 1
+			end
+		end
+	end
+	
+	return count;
+end
+
+
+--? @shortdesc Returns the number of buildings owned by this player (inclusive).
+--? @args PlayerID playerId, Table building_names
+--? @result Integer
+function Player_GetBuildingsCountOnly( player, ebplist )
+
+	-- if passed in a single item, put it in a table
+	if scartype(ebplist) ~= ST_TABLE then
+		ebplist = {ebplist}
+	end
+	
+	-- convert all EBP strings to IDs
+	for n = 1, table.getn(ebplist) do
+		if scartype(ebplist[n]) == ST_STRING then
+			ebplist[n] = World_GetPropertyBagGroupID(ebplist[n])
+		end
+	end
+	
+	local entity_count = Player_GetEntityCount(player);
+	--print("entity count: "..entity_count)
+
+	local count = 0;
+	
+	-- function to check if one entity is in the list
+	for i = 0, entity_count - 1 do
+		local name = Player_GetEntityName(player, i)
+		--print(name)
+		local wpbgID = World_GetPropertyBagGroupID(name)
+		for y = 1, table.getn(ebplist) do
+			--print(wpbgID)
+			--print(ebplist[y])
+			if wpbgID == ebplist[y] then
+				count = count + 1
+			end
+		end
+	end
+
+	return count;
+	
+end
+
+
+--? @shortdesc Add resource to player, as opposed to just setting it. Possible resource types are RT_Requisition, RT_Power
+--? @args PlayerID playerId, Integer resourceType, Real value
+--? @result Void
+function Player_AddResource(playerId, resource, value)
+	local i = Player_GetResource(playerId, resource)
+	local resourceAmount =  i + value
+	Player_SetResource(playerId, resource, resourceAmount)
+end
+
+
+
+
+--? @shortdesc For the given player, get all of the squads gathered into a squadgroup of your naming.  
+--? @extdesc Squads will be added to given squad group.  If the given squad group does not exist it will be created.
+--? @args PlayerID playerId, String squadgroupName
+--? @result SGroupID
+function Player_AddSquadsToSGroup(playerId, squadgroupName)	
+	-- find the squad group.  create it if it doesnt exist
+	local sgroupId = _Player_Private.CreateGroupIfNotFound( squadgroupName, SGroupCaller )
+	SGroup_AddGroup( sgroupId, Player_GetSquads( playerId ) )
+	return sgroupId
+end
+
+--? @shortdesc Creates/Clears groups that contain all of a player's units and buildings. Defaults - sg_allsquads and eg_allentities
+--? @extdesc Fills an SGroup with all of the given player's squads, and an EGroup with all the player's entities.
+--? If you don't provide and groups, then it defaults to using sg_allsquads and eg_allentities.
+--? @args PlayerID player[, SGroupID sgroup, EGroupID egroup]
+--? @result Void
+function Player_GetAll(...)
+
+	-- all of the arguments are passed in through a table called "arg" rather than named
+	local pID = arg[1]
+	
+	if (table.getn(arg) == 1) then
+		
+		-- put results into the default groups
+		
+		sg_allsquads = SGroup_CreateIfNotFound("sg_allsquads")
+		SGroup_Clear(sg_allsquads)
+		SGroup_AddGroup(sg_allsquads, Player_GetSquads(pID))
+		
+		eg_allentities = EGroup_CreateIfNotFound("eg_allentities")
+		EGroup_Clear(eg_allentities)
+		EGroup_AddEGroup(eg_allentities, Player_GetEntities(pID))
+		
+	elseif (table.getn(arg) == 2) then
+	
+		if ( scartype( arg[2] ) == ST_SGROUP ) then
+		
+			SGroup_Clear(arg[2])
+			SGroup_AddGroup(arg[2], Player_GetSquads(pID))
+			
+		elseif ( scartype( arg[2] ) == ST_EGROUP ) then
+		
+			EGroup_Clear(arg[2])
+			EGroup_AddEGroup(arg[2], Player_GetEntities(pID))
+			
+		else
+		
+			fatal( "Player_GetAll() has 2 parameters but the second parameter is neither sgroup nor egroup" )
+
+		end
+	
+	
+	elseif (table.getn(arg) == 3) then
+		
+		if ( scartype( arg[2] ) ~= ST_SGROUP or scartype( arg[3] ) ~= ST_EGROUP ) then
+			fatal( "Player_GetAll() has 3 parameters but did not have sgroup and egroup parameters in order" )
+		end
+		
+		-- if there were some group names specified, use those instead
+		
+		SGroup_Clear(arg[2])
+		SGroup_AddGroup(arg[2], Player_GetSquads(pID))
+		
+		EGroup_Clear(arg[3])
+		EGroup_AddEGroup(arg[3], Player_GetEntities(pID))
+		
+	end
+	
+end
+
+
+--? @shortdesc Gather together all of a player's squads that are in proximity to a marker, a position, or within a territory sector into an SGroup. The SGroup is cleared beforehand. 
+--? @extdesc You can override a marker's normal proximity by specifying a range.
+--? @args PlayerID player, SGroupID sgroup, MarkerID/Pos/SectorID position[, Real range]
+--? @result Void
+function Player_GetAllSquadsNearMarker(playerid, sgroupid, pos, range)
+	
+	-- if we're given a circular marker, convert it to a pos/range if range is given
+	if scartype(pos) == ST_MARKER and range ~= nil then
+		pos = Marker_GetPosition(pos)
+	end
+	
+	SGroup_Clear(sgroupid)									-- clear the group beforehand
+	
+	if scartype(pos) == ST_MARKER then
+		_Player_Private.GetAllNearMarker( 					-- get all squads in proximity of a marker
+			playerid, 
+			sgroupid, 
+			pos 
+		)
+	elseif scartype(pos) == ST_SCARPOS then
+		_Player_Private.GetAllNearPoint( 					-- get all squads in proximity of a point
+			playerid, 
+			sgroupid, 
+			pos, 
+			range
+		)
+	elseif scartype(pos) == ST_NUMBER then
+		_Player_Private.GetAllWithinTerritorySector( 		-- get all squads in the territory sector
+			playerid,
+			sgroupid,
+			pos
+		)		
+	end
+	
+end
+
+
+--? @shortdesc Gather together all of a player's entities that are in proximity to a marker, a position, or within a territory sector into an EGroup. The EGroup is cleared beforehand. 
+--? @extdesc You can override a marker's normal proximity by specifying a range.
+--? @args PlayerID playerid, EGroupID egroup, MarkerID/Pos/SectorID position[, Real range]
+--? @result Void
+function Player_GetAllEntitiesNearMarker(playerid, egroupid, pos, range)
+
+	-- if we're given a circular marker, convert it to a pos/range if range is given
+	if scartype(pos) == ST_MARKER and range ~= nil then
+		pos = Marker_GetPosition(pos)
+	end
+	
+	EGroup_Clear(egroupid)									-- clear the group beforehand
+	
+	if scartype(pos) == ST_MARKER then
+		_Player_Private.GetAllNearMarker( 					-- get all entities in proximity of a marker
+			playerid, 
+			egroupid, 
+			pos 
+		)
+	elseif scartype(pos) == ST_SCARPOS then
+		_Player_Private.GetAllNearPoint( 					-- get all entities in proximity of a point
+			playerid, 
+			egroupid, 
+			pos, 
+			range
+		)
+	elseif scartype(pos) == ST_NUMBER then
+		_Player_Private.GetAllWithinTerritorySector( 		-- get all entities in the territory sector
+			playerid,
+			egroupid,
+			pos
+		)		
+	end
+	
+end
+
+
+
+
+--? @shortdesc Returns true if a player can see ALL or ANY items in an egroup
+--? @args PlayerID playerid, EGroupID egroup, Boolean all
+--? @result Boolean
+function Player_CanSeeEGroup( playerid, egroupid, all )
+	
+	local CheckCanPlayerSeeEntity = function( groupid, itemindex, itemid )
+		return Player_CanSeeEntity( playerid, itemid )
+	end
+	
+	local result = EGroupCaller.ForEachAllOrAny( egroupid, all, CheckCanPlayerSeeEntity ) 
+	
+	return result
+end
+
+
+--? @shortdesc Returns true if a player can see ALL or ANY items in an sgroup
+--? @args PlayerID playerid, SGroupID sgroup, Boolean all
+--? @result Boolean
+function Player_CanSeeSGroup( playerid, sgroupid, all)
+	
+	local CheckCanPlayerSeeSquad = function( groupId, itemindex, itemid )
+		return Player_CanSeeSquad( playerid, itemid, all )
+	end
+	
+	local result = SGroupCaller.ForEachAllOrAny( sgroupid, all, CheckCanPlayerSeeSquad )
+	
+	return result
+end
+
+
+--? @shortdesc Sets the current personnel or vehicle cap for a player. The captype is either CT_Personnel or CT_Vehicle (you can't adjust Medic caps just yet).
+--? @extdesc Note that any modifiers that adjust the current cap will be applied on top of this.  Also note, the current cap cannot go higher than the max cap.
+--? @args PlayerID playerid, Integer captype, Integer newcap
+--? @result Void
+function Player_SetMaxPopulation(playerid, captype, value)
+	
+	if scartype(playerid) ~= ST_PLAYER then fatal("Player_SetMaxPopulation: Invalid PlayerID") end
+	local index = World_GetPlayerIndex(playerid)
+	
+	if (captype == CT_Vehicle) then
+		
+		if( _player_vehicle_cap == nil ) then	
+			_player_vehicle_cap = {}
+		else
+			Modifier_Remove( _player_vehicle_cap[index] )
+		end
+		local modifier = Modifier_Create(MAT_Player, "modifiers\\player_modifiers\\vehicle_cap_player_modifier", MUT_Addition, false, (value - Player_GetMaxPopulation(playerid, CT_Vehicle)), "")
+		_player_vehicle_cap[index] = Modifier_ApplyToPlayer( modifier, playerid )
+		
+	elseif (captype == CT_Personnel) then
+		
+		if( _player_personnel_cap == nil ) then	
+			_player_personnel_cap = {}
+		else
+			Modifier_Remove( _player_personnel_cap[index] )
+		end
+		local modifier = Modifier_Create(MAT_Player, "modifiers\\player_modifiers\\personnel_cap_player_modifier", MUT_Addition, false, (value - Player_GetMaxPopulation(playerid, CT_Personnel)), "")
+		_player_personnel_cap[index] = Modifier_ApplyToPlayer( modifier, playerid )
+		
+	else
+		
+		fatal("Player_SetMaxPopulation: Invalid cap type")
+		
+	end
+	
+end
+
+
+--? @shortdesc Sets the current personnel or vehicle max-cap for a player. The captype is either CT_Personnel or CT_Vehicle (you can't adjust Medic caps just yet).
+--? @extdesc Note that any modifiers that adjust the current max cap will be applied on top of this.  Also note, this is only adjusting the max cap, not the current cap,
+--? @extdesc you will have to call Player_SetMaxPopulation to adjust the current max population to do this.
+--? @args PlayerID playerid, Integer captype, Integer newcap
+--? @result Void
+function Player_SetMaxCapPopulation(playerid, captype, value)
+
+	if scartype(playerid) ~= ST_PLAYER then fatal("Player_SetMaxPopulation: Invalid PlayerID") end
+	local index = World_GetPlayerIndex(playerid)
+	
+	if (captype == CT_Vehicle) then
+		
+		if( _player_vehicle_max_cap == nil ) then	
+			_player_vehicle_max_cap = {}
+		else
+			Modifier_Remove( _player_vehicle_max_cap[index] )
+		end
+		local modifier = Modifier_Create(MAT_Player, "modifiers\\player_modifiers\\max_vehicle_cap_player_modifier", MUT_Addition, false, (value - Player_GetMaxPopulation(playerid, CT_Vehicle)), "")
+		_player_vehicle_max_cap[index] = Modifier_ApplyToPlayer( modifier, playerid )
+		
+	elseif (captype == CT_Personnel) then
+		
+		if( _player_personnel_max_cap == nil ) then	
+			_player_personnel_max_cap = {}
+		else
+			Modifier_Remove( _player_personnel_max_cap[index])
+		end
+		local modifier = Modifier_Create(MAT_Player, "modifiers\\player_modifiers\\max_personnel_cap_player_modifier", MUT_Addition, false, (value - Player_GetMaxPopulation(playerid, CT_Personnel)), "")
+		_player_personnel_max_cap[index] = Modifier_ApplyToPlayer( modifier, playerid )
+		
+	else
+		
+		fatal("Player_SetMaxCapPopulation: Invalid cap type")
+		
+	end
+	
+end
+
+
+--? @shortdesc Restrict a list of addons.
+--? @extdesc list should contain an array of strings to restrict.
+--? @result Void
+--? @args PlayerID playerid, Table addonlist
+function Player_RestrictAddOnList( playerID, list )
+	for i=1,table.getn(list) do
+		Player_RestrictAddOn( playerID, list[i] )
+	end
+end
+
+
+--? @shortdesc Restrict a list of buildings.
+--? @extdesc list should contain an array of strings to restrict.
+--? @result Void
+--? @args PlayerID playerid, Table blueprintlist
+function Player_RestrictBuildingList( playerID, list )
+	for i=1,table.getn(list) do
+		Player_RestrictBuilding( playerID, list[i] )
+	end
+end
+
+
+--? @shortdesc Restrict a list of research items.
+--? @extdesc list should contain an array of strings to restrict.
+--? @result Void
+--? @args PlayerID playerid, StringTable list
+function Player_RestrictResearchList( playerID, list )
+	for i=1,table.getn(list) do
+		Player_RestrictResearch( playerID, list[i] )
+	end
+end
+
+
+--? @shortdesc Returns true if a given player exculsivley owns all items in a group
+--? @result Boolean
+--? @args PlayerID playerid, EGroupID egroup
+function Player_OwnsEGroup( playerID, egroupID )
+	local playerIntID = Player_GetID( playerID )
+	local CheckPlayerOwnsEGroup = function( groupid, itemindex, itemid )
+		-- first, make sure entity is not owned by the world
+		if World_OwnsEntity( itemid ) then
+			return false
+		end
+		
+		-- now, check if the owner matches
+		local ownerID = Player_GetID( Entity_GetPlayerOwner( itemid ) )
+		return ( ownerID == playerIntID )
+	end
+	
+	return EGroupCaller.ForEachAllOrAny( egroupID, true, CheckPlayerOwnsEGroup )
+end
+
+
+--? @shortdesc Returns true if a given player exculsivley owns all items in a group
+--? @result Boolean
+--? @args PlayerID playerid, SGroupID sgroup
+function Player_OwnsSGroup( playerID, sgroupID )
+	local playerIntID = Player_GetID( playerID )
+	
+	local CheckPlayerOwnsSGroup = function( groupid, itemindex, itemid )
+		-- first, make sure squad is not owned by the world
+		if World_OwnsSquad( itemid ) then
+			return false
+		end
+		
+		-- now, check if the owner matches
+		local ownerID = Player_GetID( Squad_GetPlayerOwner( itemid ) )
+		return ( ownerID == playerIntID )
+	end
+	
+	return SGroupCaller.ForEachAllOrAny( sgroupID, true, CheckPlayerOwnsSGroup )
+end
+
+
+--? @shortdesc Returns true if ANY of a players squads are in proximity of a marker
+--? @result Boolean
+--? @args PlayerID playerid, MarkerID marker
+function Player_AreSquadsNearMarker( playerID, markerID, range )
+	
+	local internal_playergetnearmarker = SGroup_CreateIfNotFound("internal_playergetnearmarker")
+	
+	Player_GetAllSquadsNearMarker( playerID, internal_playergetnearmarker, markerID, range)
+	
+	local bSquadNear = SGroup_Count( internal_playergetnearmarker ) > 0
+	SGroup_Destroy(internal_playergetnearmarker)
+	
+	return bSquadNear
+	
+end
+
+
+
+--? @shortdesc Any of the player's units in the marker area move out of the area, and can be made invulnerable for a bit whilst they do it
+--? @extdesc You can replace the marker with a position and a range - i.e. Player_ClearArea(player, pos, range, invulnerable)
+--? @result Void
+--? @args PlayerID player, MarkerID marker, Bool invulnerable
+function Player_ClearArea(...)
+
+	local playerid = arg[1]
+	local pos = nil
+	local range = nil
+	local invulnerabe = nil
+	if (table.getn(arg) == 3) then
+		pos = Marker_GetPosition(arg[2])
+		range = Marker_GetProximity(arg[2])
+		invulnerable = arg[3]
+	elseif (table.getn(arg) == 4) then
+		pos = arg[2]
+		range = arg[3]
+		invulnerable = arg[4]
+	end
+	
+	internal_playercleararea = SGroup_CreateIfNotFound("internal_playercleararea")
+	SGroup_Clear(internal_playercleararea)
+	_Player_Private.GetAllNearPoint(playerid, internal_playercleararea, pos, range)
+	
+	Cmd_MoveAwayFromPos(internal_playercleararea, pos, range)
+	if (invulnerable == true) then
+		SGroup_SetInvulnerable(internal_playercleararea, true, 5)
+	end
+	
+	SGroup_Destroy(internal_playercleararea)
+	
+end
+
+
+
+
+ITEM_LOCKED = 0
+ITEM_UNLOCKED = 1
+ITEM_REMOVED = 2
+ITEM_DEFAULT = 3
+
+
+--? @shortdesc Sets the cost of an upgrade.
+--? @args PlayerID player, UpgradeID upgrade, Real requisition, Real power
+--? @result Void
+function Player_SetUpgradeCost(player, upgrade, requisition, power)
+
+	Modify_SetUpgradeCost(player, upgrade, RT_Requisition, requisition)
+	Modify_SetUpgradeCost(player, upgrade, RT_Power, power)
+	
+end
+
+--? @shortdesc Checks to see if a player has lost (if player owns any squads and any buildings contained in blueprints)
+--? @extdesc Pass in a table of blueprints of buildings that the player must have in order to be considered "alive".  
+--? Ambient buildings are already take into consideration since they must be occupied by a squad.
+--? @args PlayerID player, LuaTable Blueprints
+--? @result Boolean
+function Player_HasLost(player, blueprints)
+
+	_eg_all_player_buildings = EGroup_CreateIfNotFound("_eg_all_player_buildings")
+	_sg_all_player_squads = SGroup_CreateIfNotFound("_sg_all_player_squads")
+	
+	if scartype(blueprints) ~= ST_TABLE then
+		fatal("Player_HasLost: table is invalid")
+	end
+	
+	-- check to see if the player has any squads left...
+	SGroup_Clear(_sg_all_player_squads)
+	Player_GetAll(player, _sg_all_player_squads)
+
+	if SGroup_IsEmpty(_sg_all_player_squads) == false then  return false  end
+		
+	-- checks to see if the player has any of the critical buildings left... 
+	EGroup_Clear(_eg_all_player_buildings)
+	Player_GetAll(player, _eg_all_player_buildings)
+	EGroup_Filter(_eg_all_player_buildings, blueprints, FILTER_KEEP)
+	
+	if EGroup_IsEmpty(_eg_all_player_buildings) == false then  return false  end
+		
+	return true
+
+end
