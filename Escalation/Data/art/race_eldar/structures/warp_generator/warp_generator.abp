@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Warp_Generator",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}
