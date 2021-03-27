@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "chaos_chains_of_torment_generator",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}
