@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Shrine_Nurgle",
+    "Shrine_Nurgle_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}
