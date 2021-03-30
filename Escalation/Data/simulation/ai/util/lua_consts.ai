@@ -1,0 +1,209 @@
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--
+-- LUA CONSTANTS
+-- Defines variables to be used for important Lua defined contsants
+--
+-- 
+-- (c) 2006 Relic Entertainment
+--
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+T_RACE_ELDAR = "eldar"
+T_RACE_IMPERIAL_GUARD = "imperial_guard"
+T_RACE_ORKS = "orks"
+T_RACE_SPACE_MARINES = "space_marines"
+T_RACE_CHAOS_MARINES = "chaos_marines"
+T_RACE_TYRANIDS = "tyranids"
+
+-- remap this function to the one used in the AI
+Util_GetUpgradeID = PBG_Get
+Util_GetAbilityID = PBG_Get
+Util_GetSlotItemID = PBG_Get
+
+function _InitializeSBPS()
+
+	--[[ SBPS ]]
+	-- example of use: SBP.SM_MARINE
+	-- example of definition: SM_MARINE = PBG_Get("sbps/race_marine/troops/sm_marine_squad"),
+	SBP = {
+		
+		--[[ SM SBPS ]]
+
+		--infantry
+	
+		--vehicles		
+		
+		--[[ IG SBPS ]]
+		
+		--infantry
+	
+		--vehicles		
+		
+		--[[ ORK SBPS ]]
+		
+		--infantry
+		
+		--vehicles
+		
+		--[[ ELDAR SBPS ]]
+		
+		--infantry
+		
+		--vehicles
+		
+		--[[ TYRANID SBPS ]]
+		
+		--infantry
+		
+		--vehicles
+		
+		--[[ CHAOS SBPS ]]
+		
+		--infantry
+		
+		--vehicles
+		
+	}                                 
+
+end
+_InitializeSBPS()
+
+function _InitializeEBPS()
+
+	--[[ EBPS ]]
+	-- example of use: EBP.SM_MARINE
+	-- example of definition: SM_MARINE = PBG_Get("ebps/race_marine/troops/sm_marine"),
+	EBP = {
+		
+		--[[ SM EBPS ]]
+		
+		-- structures
+
+		SM_SECURE = PBG_Get("ebps/pvp/race_marine/buildings/sm_listening_post"),
+		SM_GENERATOR = PBG_Get("ebps/pvp/race_marine/buildings/sm_generator"), 
+		SM_TURRET = PBG_Get("ebps/pvp/race_marine/buildings/sm_heavy_bolter_turret_tech_marine"),
+		SM_REINFORCEPOINT = PBG_Get("ebps/pvp/race_marine/buildings/sm_techmarine_field_ops"),
+		
+		--[[ IG EBPS ]]
+
+		-- structures
+
+		IG_SECURE = PBG_Get("ebps/pvp/race_imperial_guard/buildings/ig_listening_post"),
+		IG_GENERATOR = PBG_Get("ebps/pvp/race_imperial_guard/buildings/ig_generator"), 
+		
+		--[[ ORK EBPS ]]
+
+		-- structures
+
+		ORK_SECURE = PBG_Get("ebps/pvp/race_ork/buildings/ork_listening_post"),
+		ORK_GENERATOR = PBG_Get("ebps/pvp/race_ork/buildings/ork_generator"), 
+		ORK_TURRET = PBG_Get("ebps/pvp/race_ork/buildings/ork_orky_turret_mek"),
+		ORK_REINFORCEPOINT = PBG_Get("ebps/pvp/race_ork/buildings/ork_waaagh_banner"),
+
+		--[[ ELDAR EBPS ]]
+
+		-- structures
+
+		ELD_SECURE = PBG_Get("ebps/pvp/race_eldar/buildings/eld_listening_post"),
+		ELD_GENERATOR = PBG_Get("ebps/pvp/race_eldar/buildings/eld_generator"), 
+		ELD_WEBWAYGATE = PBG_Get("ebps/pvp/race_eldar/buildings/eld_webway_gate"),
+
+		--[[ TYRANID EBPS ]]
+		
+		-- structures
+
+		TYR_SECURE = PBG_Get("ebps/pvp/race_tyranid/buildings/tyr_listening_post"),
+		TYR_GENERATOR = PBG_Get("ebps/pvp/race_tyranid/buildings/tyr_generator"), 
+		TYR_REINFORCEPOINT = PBG_Get("ebps/pvp/race_tyranid/buildings/tyr_spawning_pool"),
+
+		--[[ CHAOS EBPS ]]
+		
+		-- structures
+
+		CSM_SECURE = PBG_Get("ebps/pvp/race_chaos/buildings/csm_listening_post"),
+		CSM_GENERATOR = PBG_Get("ebps/pvp/race_chaos/buildings/csm_generator"), 
+		CSM_TURRET = PBG_Get("ebps/pvp/race_chaos/buildings/csm_heavy_bolter_turret_plaguemarine"),
+		CSM_REINFORCEPOINT1 = PBG_Get("ebps/pvp/race_chaos/buildings/csm_shrine_khorne"),
+		CSM_REINFORCEPOINT2 = PBG_Get("ebps/pvp/race_chaos/buildings/csm_shrine_nurgle"),
+		CSM_REINFORCEPOINT3 = PBG_Get("ebps/pvp/race_chaos/buildings/csm_shrine_tzeentch"),
+	}
+
+end
+_InitializeEBPS()
+
+
+-- delaying the variables that rely on Scar commands
+-- Scar commands used before initialization can cause crashes
+function _InitializeUPGS()
+	
+	--[[ UPGRADES ]]
+	-- example of use: UPG.SM_WARGEAR
+	-- example of definition: SM_WARGEAR = Util_GetUpgradeID("tuning/wargear/weapons/crystal_light_bright"),
+	UPG = {
+		
+		--[[ SM UPGRADES ]]
+
+		SM_TIER2 = PBG_Get("upgrade/pvp/race_marine/research/tier_2"),
+		SM_TIER3 = PBG_Get("upgrade/pvp/race_marine/research/tier_3"),
+	
+		--[[ IG UPGRADES ]]
+
+		IG_TIER2 = PBG_Get("upgrade/pvp/race_imperial_guard/research/tier_2"),
+		IG_TIER3 = PBG_Get("upgrade/pvp/race_imperial_guard/research/tier_3"),
+		
+		--[[ ORK UPGRADES ]]
+
+		ORK_TIER2 = PBG_Get("upgrade/pvp/race_ork/research/tier_2"),
+		ORK_TIER3 = PBG_Get("upgrade/pvp/race_ork/research/tier_3"),
+		
+		--[[ ELDAR UPGRADES ]]
+
+		ELD_TIER2 = PBG_Get("upgrade/pvp/race_eldar/research/tier_2"),
+		ELD_TIER3 = PBG_Get("upgrade/pvp/race_eldar/research/tier_3"),
+		
+		--[[ TYRANID UPGRADES ]]
+
+		TYR_TIER2 = PBG_Get("upgrade/pvp/race_tyranid/research/tier_2"),
+		TYR_TIER3 = PBG_Get("upgrade/pvp/race_tyranid/research/tier_3"),
+		
+		--[[ CHAOS UPGRADES ]]
+
+		CSM_TIER2 = PBG_Get("upgrade/pvp/race_chaos/research/tier_2"),
+		CSM_TIER3 = PBG_Get("upgrade/pvp/race_chaos/research/tier_3"),
+	
+	}
+	
+	--[[ ABILITIES ]]
+	-- example of use: ABILITY.SM_MORALE_BOOST
+	-- example of definition: SM_MORALE_BOOST = Util_GetAbilityID("abilities/morale/boost"),
+	ABILITY = {
+		
+		--[[ COMMON ]]
+
+		--[[ SM ABILITIES ]]
+
+		--[[ IG ABILITIES ]]
+
+		--[[ ORK ABILITIES ]]
+
+		--[[ ELDAR ABILITIES ]]
+
+		--[[ TYRANID ABILITIES ]]
+
+		--[[ CHAOS ABILITIES ]]
+	}
+	
+	
+	--[[ DROP ITEMS ]]
+	-- example of use; DROP.ITEM_POWER
+	-- example of definition: ITEM_POWER = Util_GetSlotItemID("slot_item/action_power_item"),
+	DROP = {
+
+		--[[ COMMON ]]
+	}
+
+end
+
+_InitializeUPGS()

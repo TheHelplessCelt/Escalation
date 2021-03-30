@@ -1,0 +1,19 @@
+import('personality/base_easy.ai')
+import('personality/orks/buildorder_lib.ai')
+
+-- randomly choose a build order from the given list defined in the buildorders lib 
+s_personality.buildorder = RandomlyChooseBuildorder( orks_buildorder )
+
+s_personality.securing_structures = 
+{
+	{pbg = EBP.ORK_SECURE, buildstyle = BS_Secure, demand_type = DEMAND_Building, limit = 1},
+}
+
+s_personality.resource_structures = 
+{
+	{pbg = EBP.ORK_GENERATOR, demand_type = DEMAND_Building, limit = 1},
+}
+
+s_personality.tech_tier_upgrades = 
+{
+}

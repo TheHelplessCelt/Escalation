@@ -1,0 +1,190 @@
+-- Player Tactics
+-- list of tactics that are specific to player abilities
+-- this includes the demand calculations for these abilities and 
+-- the calculations of where these should be used
+
+--------------------------------------------------------------------------------
+-- player ability tunables
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- strength of production tunables
+--------------------------------------------------------------------------------
+StrengthOfProduction = {}
+StrengthOfProduction.TankRequirement = 2
+StrengthOfProduction.TankDemandMultiplier = 5
+StrengthOfProduction.DemandBase = 10
+StrengthOfProduction.MinHealth = 0.2
+
+-- this list should be read in from the ability but the action is hidden deep inside
+StrengthOfProduction.Items = {}
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Player Tactic Demand functions
+-- 
+
+-- no special demand function here
+function AITacticDemand_Default( abilityPBG )
+	return 1
+end
+
+-- this ability should be ignored for consideration
+function AITacticDemand_Ignore( abilityPBG )
+	return -1000
+end
+
+function AITacticDemand_StrengthOfProduction( abilityPBG )
+
+	local sg_Vehicle = AIPlayer_GetVehicleSquads( s_selfplayer )
+	local vehicleSoPCheck = SGroup_Count( sg_Vehicle )
+	
+	if (vehicleSoPCheck == 0) then
+		return -1
+	end
+		
+	filterGroup = function(groupid, itemindex, itemid)
+		
+		for k,v in pairs(StrengthOfProduction.Items) do
+			if (Squad_GetBlueprintID( itemid )== PBG_GetID(v) ) then
+				if (Squad_IsUnderAttack( itemid, 5 )) then
+					local normalized_squad_health = Squad_GetHealth(itemid) / Squad_GetHealthMax(itemid)
+					if (normalized_squad_health < StrengthOfProduction.MinHealth) then
+						return true
+						
+					end
+					
+				end
+				
+			end
+		end
+		
+		return false
+	end
+	
+	if (SGroup_ForEachAllOrAny( sg_Vehicle, false, filterGroup )) then
+		return 100
+	end
+	
+	return -1
+end
+
+--------------------------------------------------------------------------------
+-- Vehicle Self Heal Tunables
+--------------------------------------------------------------------------------
+
+function AITacticDemand_SelfHeal( abilityPBG )
+
+	-- this depends on the vehicle count - we need to run through each aisquad and determine how many 
+	-- of them are vehicles
+
+	local vehicleCheck = 0
+	local sg_AIVehiclesforHeal = AIPlayer_GetVehicleSquads( s_selfplayer )
+	local vehicleCheck = SGroup_Count( sg_AIVehiclesforHeal )
+
+	--Find the number of vehicles AI player has
+
+	if vehicleCheck >= 2 then
+		--Find the avrage health of all the vehciles
+		local avgHealth = SGroup_GetAvgHealth( AIPlayer_GetVehicleSquads( s_selfplayer ) )
+		if (avgHealth < 0.5) then
+			return 100
+		end
+		
+		if (avgHealth > 0.9) then
+			return -1
+		end
+		
+		local normalized_health = (avgHealth - 0.5) / 0.5
+		return (1-normalized_health)*100
+		
+	end
+
+	--not needed
+	return -1
+
+end
+
+--------------------------------------------------------------------------------
+-- ResourcePush Tunables
+--------------------------------------------------------------------------------
+
+function AITacticDemand_ResourcePush( abilityPBG )
+
+	--If team has a lot of requisition reduce the demand for this ability
+	local curResources = AIResource_GetCurrentResources( s_selfplayer )
+	local mp = (curResources.requisition / 1500 )
+	local mpDesire = math.min( mp, 1 )
+
+	return (1.01-mpDesire)*100
+	
+end
+
+
+function AITacticDemand_Artillery( abilityPBG ) 
+
+	local artilleryInfo = {
+		threat_weighting=1.0, 
+		importance_weighting=0.5,
+		must_be_seen=true,
+		min_threat = 5}
+	
+	local outPos = AIPlayer_GetBestArtilleryPosition( s_selfplayer, artilleryInfo )
+
+	if (outPos) then
+		-- should be based on the explosiveness of this ability
+		-- would be nice to know the greatest clump of guys and its value 
+		return 10
+	end
+	
+	return -1
+end
+
+--------------------------------------------------------------------------------
+-- Tactic position target filters
+--   return a position, or a position with all coords set to COORD_INVALID
+
+
+function PositionTargetFilter_EnemyClumpPosition()
+	
+	local artilleryInfo = {
+		threat_weighting=1.0, 
+		importance_weighting=0.5,
+		must_be_seen=true,
+		min_threat = 5}
+	
+	local outPos = AIPlayer_GetBestArtilleryPosition( s_selfplayer, artilleryInfo )
+	if (outPos) then
+		return outPos
+	end
+	
+	aitrace("PositionTargetFilter_EnemyClumpPosition: Error! Shouldn't be called if there isn't a clump to hit!")
+	return World_PosUnsafe(COORD_INVALID,COORD_INVALID,COORD_INVALID)
+end
+
+function PositionTargetFilter_EnemyClumpDirectional()
+	
+	local pos1 = PositionTargetFilter_EnemyClumpPosition()
+	if (pos1.x ~= COORD_INVALID) then
+		
+		local pos_index = AIPlayer_GetNextBestPosClumpIdx( s_selfplayer, pos1, 20 )
+		
+		if (pos_index > 0) then
+			return pos1, AIPlayer_GetClumpPosition(s_selfplayer,pos_index)
+		end
+		
+		-- choose random angle
+		local rand_angle = AI_RandRange(0,2*3.14159)
+		local xdir = math.sin(rand_angle)*5
+		local zdir = math.cos(rand_angle)*5
+	
+		pos2 = World_Pos( pos1.x+xdir, pos1.y, pos1.z+zdir)
+		
+		return pos1, pos2
+	end
+
+	return World_PosUnsafe(COORD_INVALID, COORD_INVALID, COORD_INVALID)
+	
+end
+

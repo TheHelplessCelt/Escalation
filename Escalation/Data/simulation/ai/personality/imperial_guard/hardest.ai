@@ -1,0 +1,6 @@
+import('personality/base_hardest.ai')
+import('personality/imperial_guard/buildorder_lib.ai')
+
+-- randomly choose a build order from the given list defined in the buildorders lib 
+s_personality.buildorder = RandomlyChooseBuildorder( imperial_guard_buildorder )
+

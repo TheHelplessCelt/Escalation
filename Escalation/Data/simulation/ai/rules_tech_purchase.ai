@@ -1,0 +1,118 @@
+
+------------------------------------------------------------------------
+--
+--
+
+TECHPRIORITY_Low = 1
+TECHPRIORITY_Med = 2
+TECHPRIORITY_High = 3
+TECHPRIORITY_Urgent = 4
+
+function CalcDemandTechPriorityLevel()
+	local curResources = cache.resources
+	local resRate = cache.resources_rate
+	local tier_level = cache.tech_tier_level
+	
+	-- if we can tech up, we would have started at level 1
+	if (tier_level < 1) then
+		return TECHPRIORITY_Low
+	end
+	
+	local min_units = 3 + ((tier_level - 1) * 1.5);
+	
+	-- the higher levels depend on waaagh (not power or requisition)
+	if (tier_level > 1 and curResources.waaagh < 200) then
+	-- if we have enough military units and a good economy - tech up
+		if (cache.military_count >= min_units) then
+			if ((resRate.power > (50 * tier_level) or curResources.power > (150 * tier_level)) and
+				(resRate.requisition > (300 * tier_level) or curResources.requisition > (700 * tier_level))) then
+				return TECHPRIORITY_High
+			elseif ((resRate.power > (35 * tier_level) or curResources.power > (100 * tier_level))  and
+				(resRate.requisition > (225 * tier_level) or curResources.requisition > (550 * tier_level))) then
+				return TECHPRIORITY_Med
+			end	
+		end
+		return TECHPRIORITY_Low
+	end
+	
+	-- if we have enough military units and a good economy - tech up
+	if (cache.military_count >= min_units) then
+		if ((resRate.power > (50 * tier_level) or curResources.power > (150 * tier_level)) and
+			(resRate.requisition > (300 * tier_level) or curResources.requisition > (700 * tier_level))) then
+			return TECHPRIORITY_Urgent
+		elseif ((resRate.power > (35 * tier_level) or curResources.power > (100 * tier_level))  and
+			(resRate.requisition > (225 * tier_level) or curResources.requisition > (550 * tier_level))) then
+			return TECHPRIORITY_High
+		elseif ((resRate.power > (15 * tier_level) or curResources.power > (75 * tier_level)) and
+			(resRate.requisition > (150 * tier_level) or curResources.requisition > (350 * tier_level))) then
+			return TECHPRIORITY_Med
+		end	
+	end
+	
+	return TECHPRIORITY_Low
+end
+
+-----------------------------------------------
+-- CALCULATE TECH LEVELS
+
+function CalculateCurrentTechLevel()
+	local tech_tier_upgrades = s_personality.tech_tier_upgrades;
+
+	if (tech_tier_upgrades == nil) then
+		return 0
+	end
+
+	local ucount = table.getn(tech_tier_upgrades)
+	
+	-- determine if we can build these upgrades
+	for i=1, ucount do
+		local upgrade = tech_tier_upgrades[i]
+		if (upgrade and upgrade.pbg) then
+			local upgradePBG = upgrade.pbg
+			
+			if (AIProduction_CanNonSquadProduce( s_selfplayer, PITEM_Upgrade, upgradePBG )) then
+				return i -- the index for the first tech tier we can build is the tech level
+			end
+		end
+	end
+	
+	return ucount + 1 -- we've built all tech upgrades
+end
+
+-----------------------------------------------
+-- GENERIC RULES FOR TECH PURCHASING
+
+function SpecialTechBuildingRules( tech_pbg )
+
+	if tech_pbg == nil then
+		return 0
+	end
+	
+	-- no rules for easy
+	if (s_diffLevel==AD_Easy) then
+		return 0
+	end
+	
+    local increase_tech = CalcDemandTechPriorityLevel()
+	
+	-- the demand increases for each tech level
+	local tech_to_budget_levels = {0, 30, 60, 85}
+	
+	aitrace("increase_tech level:"..increase_tech.." Demand:"..tech_to_budget_levels[increase_tech])
+	ai_budget:setweight( "BUDGET_Tech", tech_to_budget_levels[increase_tech] )
+	
+	return tech_to_budget_levels[increase_tech]
+end
+
+-----------------------------------------------
+-- GENERIC RULES FOR UPGRADE PURCHASING
+
+function SpecialUpgradeRules( upgrade_pbg )
+
+	if upgrade_pbg == nil then
+		return 0
+	end
+	
+	-- no demand increase
+	return 0
+end

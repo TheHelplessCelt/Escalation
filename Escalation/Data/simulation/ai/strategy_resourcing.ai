@@ -1,0 +1,340 @@
+
+
+
+strategy_resourcing = {}
+
+strategy_resourcing.init = function()
+
+	s_resource_structures = s_personality.resource_structures
+
+	s_capture_pts_wanted = 0
+	
+	s_resourceDemand = {}
+end
+
+--------------------------------------------------------------------------------
+--
+	
+strategy_resourcing.calculate_capture_priorities = function()
+
+	RankCapturePoints(0.5)
+end
+
+function ResourceStats()
+		
+	-- run rules each frame and determine what resourcing actions should be added/ removed
+	aitrace("StratPts Wanted for Capture:"..cache.total_pts_to_capture)
+	aitrace("SecuredPts:"..cache.total_pts_secured.." / "..cache.total_pts_owned)
+	
+	-- current amount of resources (in proxy) (doesn't account for requests)
+	aitrace("Resources:"..res_to_str(cache.resources))
+	
+	-- rates per minute
+	aitrace("ResourceRate:"..res_to_str(cache.resources_rate))
+end
+
+function Util_CountResourceBuildRequests( )
+	
+	local count = 0
+	for k,v in pairs(s_resource_structures) do
+		count = count + Task_CountPBG( s_selfplayer, v.pbg )
+	end
+	
+	return count
+end
+
+function CalcCurrentMaxCapturePercentage()
+	
+	local curMaxPercent = s_personality.default_percentage_to_capture
+	
+	-- check for percentage growth
+	if (s_personality.capture_percentage_growth_start_time > 0 and s_personality.capture_percentage_growth_per_min > 0) then
+		local secondsPastCapTime = World_GetGameTime() - s_personality.capture_percentage_growth_start_time
+		aitrace("secondsPastCapTime:"..secondsPastCapTime)
+		aitrace("capture_percentage_growth_start_time:"..s_personality.capture_percentage_growth_start_time)
+		if (secondsPastCapTime > 0) then
+			local percentGrowth = s_personality.capture_percentage_growth_per_min * secondsPastCapTime/60
+			
+			curMaxPercent = curMaxPercent + percentGrowth
+			aitrace("MaxCapGrowth:"..curMaxPercent.." Percent:"..curMaxPercent.." Growth:"..percentGrowth)
+		end
+
+		-- cap based on personality
+		if (curMaxPercent > s_personality.max_percentage_to_capture) then
+			curMaxPercent = s_personality.max_percentage_to_capture
+		end
+	end
+
+	aitrace("MaxCapturePercentage:"..curMaxPercent)
+	return curMaxPercent
+	
+end
+
+function CreateCaptureTasks( capture_high_demand, groupID, group_priority )
+
+	local maxed_out = false
+	local capture_high_task = Task_CountInGroup( s_selfplayer, groupID )
+	
+	-- the total pts owned plus planned to be owned
+	local pts_total_owned = cache.total_pts_owned + capture_high_task
+	
+	aitrace("CaptureInitialDemand:"..capture_high_demand.." CaptureTasks:"..capture_high_task.." Total:"..pts_total_owned)
+	
+	-- 
+	local calc_max_percentage = CalcCurrentMaxCapturePercentage()
+	
+	-- determine if there is a hard max to the number of points we want
+	local pts_world_max = math.floor(calc_max_percentage * cache.all_capture_pts_total)
+	aitrace("PointCap:"..pts_world_max)
+	
+	local pts_wanted = cache.total_pts_to_capture
+	if (pts_total_owned+pts_wanted > pts_world_max) then
+		pts_wanted = pts_world_max - pts_total_owned
+	end
+	
+	-- account for desperation VP captures
+	if (cache.vp_total > 0) then
+		local selfTickers = cache.self_vp_tickers
+		local ticker_warning_level = s_personality.vp_ticker_warning_level
+
+		if (cache.vp_owned_self < cache.vp_owned_enemy and selfTickers < ticker_warning_level) then
+			pts_wanted = math.max(pts_wanted, 1)
+		end
+	end
+	
+	aitrace("PointsWanted:"..pts_wanted)
+	
+	-- cache this value to be used by unit purchasing
+	s_capture_pts_wanted = pts_wanted
+	
+	if (pts_wanted <= capture_high_demand) then
+		capture_high_demand = pts_wanted
+		aitrace("DemandReducedByMapCap:"..capture_high_demand)
+		maxed_out = true
+	end
+	
+	-- make sure we are under the personality max-setting
+	if (capture_high_demand > s_personality.max_num_capturers) then
+		capture_high_demand = s_personality.max_num_capturers
+		aitrace("DemandReducedFromCaptureCap:"..capture_high_demand)
+	end
+	
+	-- clear inactive groups each frame
+	if (capture_high_task > capture_high_demand) then
+	
+		aitrace("Killing some inactive capture tasks! ")
+		Task_KillInactiveTasksInGroup( s_selfplayer, groupID )
+	end
+	
+	-- recalc after da killin' of da tasks
+	capture_high_task = Task_CountInGroup( s_selfplayer, groupID )
+
+	if (capture_high_task < capture_high_demand) then
+		
+		aitrace("Adding new capture task to groupID:"..groupID)
+
+		local captureOrderParams =
+		{
+			mult_dist_to_capturer	= 10.0,
+			score_inertia			= 1.4,
+			mult_random				= 0.0,
+		}
+		
+		Request_Capture(s_selfplayer, groupID, group_priority, captureOrderParams);
+	end
+	
+	return maxed_out
+end
+
+resource_maxBuildRequests = 1
+
+function ResourceStructureDemand()
+	
+	-- is securing disabled?
+	if (s_components[COMPONENT_Resourcing] == false or s_components[COMPONENT_BuildStructures] == false) then
+		aitrace("Resourcing/BuildStructures Component Disabled!")
+		return
+	end
+
+	local resourceRequests = Util_CountResourceBuildRequests()
+	aitrace("ResourceReq:"..resourceRequests)
+	if (resourceRequests >= resource_maxBuildRequests) then
+		aitrace("Reached resource build request limit of:"..resource_maxBuildRequests)
+		return
+	end
+	
+	local res_tasks = Task_CountInGroup( s_selfplayer, TGROUP_ResourceAddOns )
+	if (res_tasks > 0) then	
+		aitrace("ResourceBuildRule:Only one CapturePointConstruction build task at a time: "..res_tasks)
+		return
+	end
+	
+	if (cache.total_pts_secured_w_addon_capacity <= 0) then
+		aitrace("ResourceBuildRule:Waiting for at least one secured capture point which can add on: "..cache.total_pts_secured_w_addon_capacity)
+		return
+	end
+	
+	local curResources = cache.resources
+	local resRate = cache.resources_rate
+	if ((resRate.requisition < 150 and curResources.requisition < 400)) then
+		aitrace("HealthyEconomyRule: insufficient requisition ("..tostring(curResources.requisition).." : 350) or req-rate ("..tostring(resRate.requisition).." < 150).")
+		return
+	end
+
+	local captured_threshold_35 = GetTeamRelativeFairShareValue(2*0.35, cache.num_teams )
+	
+	if (cache.percentage_pts_captured < captured_threshold_35) then
+		aitrace("MapControlRule: Need to own 35% of points. owned:"..tostring(cache.total_pts_owned).." ("..tostring(cache.percentage_pts_captured).."%).")
+		return
+	end
+	
+	local curPopcap = cache.current_population_personnel
+	local maxPopcap = cache.max_population_personnel
+	
+	if (curPopcap < (maxPopcap * 0.35)) then
+		aitrace("PopCapRule: Need 35% of pop cap . ("..tostring(curPopcap).." : "..tostring(maxPopcap * 0.35)..").")
+		return
+	end
+
+	
+	-- determine if we can build these buildings
+	for i=1, table.getn(s_resource_structures) do
+	
+		local structure = s_resource_structures[i]
+		if (structure and structure.pbg) then
+			local counttotal = UtilPBG_CountTotal( structure.pbg )
+			
+			local hit_limit_cap = false
+			if (structure.limit) then
+				if (counttotal >= structure.limit) then
+					aitrace("HitLimitCap:"..PBG_GetName( structure.pbg ).." Limit:"..structure.limit.." Count:"..counttotal)
+					hit_limit_cap = true
+				end
+			end
+			
+			if (not hit_limit_cap and Construction_CanConstruct(s_selfplayer, structure.pbg)) then
+			
+				local structureETA = GetStructureETA( structure.pbg )
+				aitrace("CAN CONSTRUCT GENERATOR:"..PBG_GetName( structure.pbg ).. " ETA:"..structureETA )
+				
+				if (structureETA < s_eta_structure_wait_time ) then
+					
+					local newdemand = ( (cache.military_count * 5) / math.max(1, counttotal * 2)) + AI_RandRange( 1, 5 )
+					
+					-- check condition for this structure
+					if (structure.condition_func==nil or structure.condition_func()) then
+					
+						if (structure.demand_pref) then
+							newdemand = newdemand + structure.demand_pref
+						end
+						
+						s_resourceDemand[ structure.pbg ] = {demand=newdemand, demand_type = DEMAND_Building }
+					else
+						aitrace("--Skipping because 'condition_func()' failed.")
+					end
+				end
+				
+			else
+				aitrace("CANNOT CONSTRUCT GENERATOR:"..PBG_GetName( structure.pbg ) )
+			end
+		end
+	end
+end
+
+function HighestResourceDemand()
+	
+	local best_pbg = nil
+	local highest_demand_tbl = {demand=-100, demand_type = nil}
+
+	for pbg,demTbl in pairs(s_resourceDemand) do
+		if (pbg and demTbl ~= false) then
+			
+			-- other considerations (?)
+			
+			if (demTbl.demand > highest_demand_tbl.demand) then
+				best_pbg = pbg
+				highest_demand_tbl = demTbl
+			end
+			
+		end
+	end
+	
+	return best_pbg, highest_demand_tbl
+
+end
+
+--------------------------------------------------------------------------------
+--
+	
+strategy_resourcing.execute = function()
+	
+	aipushtrace("Resource-Strategy")
+	
+	-- check to see if this is enabled
+	if (s_components[COMPONENT_Resourcing]==false) then
+		aitrace("Resourcing/Capture Component Disabled!")
+		aipoptrace()
+		return
+	end
+	
+	ResourceStats()
+	
+	-- nothing to capture
+	if (cache.total_pts_to_capture == 0) then
+		aitrace("Nothing to capture")
+		aipoptrace()
+		return
+	end
+	
+	local maxedout = CreateCaptureTasks( math.max(1, s_personality.max_num_capturers/2), TGROUP_CaptureHigh, TPRIORITY_CaptureHigh )
+	
+	if (maxedout==false) then
+		local demandedCaptureTasks = AIResource_GetNumCapturers( s_selfplayer )
+		
+		if ( demandedCaptureTasks > 0 ) then 
+			CreateCaptureTasks( demandedCaptureTasks, TGROUP_CaptureLow, TPRIORITY_CaptureLow )
+		end
+	end
+	
+	aipoptrace()	
+end
+
+function strategy_resourcing.do_purchase( availableResources )
+
+	aipushtrace("StrategyResourcePurchase")
+	
+	AIProfile_Marker4("AIResourcingPurchase")
+	
+	-- determine what building/ tech we should get next
+	-- go through each option and choose the one with the highest demand
+	
+	-- reset resource demand
+	clear_kv_list(s_resourceDemand)
+	
+	ResourceStructureDemand()
+	
+	local pbg, demandTbl = HighestResourceDemand()
+		
+	if (pbg) then
+
+		aitrace("Highest demand:"..PBG_GetName( pbg ).." Demand:"..demandTbl.demand );
+		
+		local unitCost = AIPlayer_GetStructureCost( s_self_modplayer, pbg )
+		
+		-- determine if this can purchase this item
+		if (not ResourceAmount_Has( availableResources, unitCost )) then
+			aipoptrace()
+			return false, unitCost
+		end
+		
+		Request_Generator( s_selfplayer, TGROUP_ResourceAddOns, TPRIORITY_BuildOrder, pbg )
+		
+		aipoptrace()
+		return true, unitCost		
+
+	end
+	
+	aipoptrace()
+	
+	return false
+end

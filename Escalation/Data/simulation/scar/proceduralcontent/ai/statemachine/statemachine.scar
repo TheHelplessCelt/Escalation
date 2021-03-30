@@ -1,0 +1,560 @@
+
+
+import("Util/print.scar")
+
+--? @group Procedural.Ai
+
+StatePrint = function() end --CreateSpecialPrint("States")
+
+-------------------------------------------------------------------------------
+-- Util
+
+Ai = {
+	Traits = {},
+	States = {},
+	Events = {},
+	isEnabled = true,
+	isEnabledDebugRender = false,
+	UpdateCount = 0,
+    
+	DISCARD_EVENT = -34534432					-- Use to discardan event during handling
+}
+
+function Ai.DefaultFunction() return false end
+
+-------------------------------------------------------------------------------
+Ai.TraitDefinition = {
+	OnEvent = {},
+	
+	GetDebugString = function(self)
+		local str = ""
+		
+		for k, v in pairs(self) do
+			if( type(v) == "table" ) then
+				str = str .. v.GetDebugString(v)
+			end
+		end
+		return str
+	end
+}
+
+-------------------------------------------------------------------------------
+--? @shortdesc Use to build a list of TRAITS for AI functionality
+function RegisterTrait( traitName )
+	StatePrint("RegisterTrait(", traitName, ")")
+	Ai.Traits[traitName] = Clone(Ai.TraitDefinition)
+	Ai.Traits[traitName].name = traitName
+	Ai.Traits[traitName].activationRadius = 65 -- default activation radius.
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Use to build a list of STATES for AI functionality
+function RegisterState( name )
+	StatePrint("RegisterState(", name, ")")
+	Ai.States[name] = Clone(Ai.StateDefinition)
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Use to build a list of EVENTS for AI functionality
+function RegisterEvent( name )
+	StatePrint("RegisterEvent(", name, ")")
+	Ai.Events[name] = name
+end
+
+Ai.StateDefinition = {
+	OnEnter = Ai.DefaultFunction,
+	Update  = Ai.DefaultFunction,
+	OnExit  = Ai.DefaultFunction,
+	
+	GetDebugString = function(self)
+		local str = ""
+		if(self.OnEnter == Ai.DefaultFunction) then
+			str = str .. "."
+		else
+			str = str .. "E"
+		end	
+		if(self.Update  == Ai.DefaultFunction) then
+			str = str .. "."
+		else
+			str = str .. "U"
+		end	
+		if(self.OnExit == Ai.DefaultFunction) then
+			str = str .. "."
+		else
+			str = str .. "X"
+		end
+		str = str .. " "
+		return str
+	end
+}
+
+function InitializeTraitsAndStates(kTrait, vTrait)
+	for kState, vState in pairs(Ai.States) do
+		vTrait[kState] = Clone(Ai.StateDefinition)
+	end
+		
+	for kEvent, vEvent in pairs(Ai.Events) do
+		vTrait.OnEvent[vEvent] = Ai.DefaultFunction
+	end
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc This must be called after registering all the AI traits and states
+function InitializeAllTraitsAndStates()
+	StatePrint("InitializeAllTraitsAndStates()")
+
+	for kTrait, vTrait in pairs(Ai.Traits) do
+		InitializeTraitsAndStates(kTrait, vTrait)
+	end
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Builds a string of the TRAIT based on the name under which it was registered.
+function GetDebugNameForTrait(trait, stringLen)
+	for k, v in pairs( Ai.Traits ) do
+		if( v == trait ) then
+			return string.sub(k, 1, stringLen)
+		end
+	end
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc This is a very useful function that can print out the TRAIT - STATE matrix
+function DebugPrintTraits(t)
+
+	local strBuf = ""
+	for k, v in pairs( Ai.States ) do
+		strBuf = strBuf .. string.sub(k, 1, 3) .. " "
+	end
+	print(" ", "    " .. strBuf)
+	
+	for k, v in pairs( t ) do
+		print ( GetDebugNameForTrait(v, 5), v.GetDebugString( v ) )
+	end
+end
+
+-------------------------------------------------------------------------------
+Ai.StateMachineDef = {
+	traits = {},
+	currentState = nil,
+	timeActive = 0,
+	timeInState = 0,
+	
+	data = {
+	},
+}
+
+-------------------------------------------------------------------------------
+--? @shortdesc Turns a given table into a component.  This give it a Statemachine member
+function MakeStateMachineComponent(component)
+	StatePrint("MakeStateMachineComponent()")
+	component.StateMachine = NewStateMachine()
+	component.StateMachine:AddTrait("Default")
+	
+	Ai.ComponentManager:Add(component)
+	
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Returns a blank StateMachine
+function NewStateMachine()
+	local sm = Clone(Ai.StateMachineDef)
+	return sm
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Add a Trait to a StateMachine
+function Ai.StateMachineDef:AddTrait(traitName)
+	StatePrint("Ai.StateMachineDef:AddTrait(", traitName, ")")
+	if type(traitName) == "string" then
+		table.insert(self.traits, Ai.Traits[traitName])
+	elseif type(traitName) == "table" then
+		local t = Clone(Ai.Traits[traitName.name])
+		t.params = Clone(traitName)
+		table.insert(self.traits,t)
+	end		
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Add a table of Traits to a StateMachine
+function Ai.StateMachineDef:AddTraits(traitList)
+	for k, v in pairs( traitList ) do
+		self:AddTrait(v)
+	end
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Clear all traits from the StateMachine
+function Ai.StateMachineDef:ClearTraits()
+	self.traits = {}
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Gets all traits from the StateMachine
+function Ai.StateMachineDef:GetTraits()
+	return self.traits
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Sends an event to a StateMachine
+function Ai.StateMachineDef:OnEvent(component, event)
+	
+	for k, v in pairs( self.traits ) do
+		local ret = v.OnEvent[event.id](component, event)
+		if( ret == true ) then
+			return true
+		elseif( ret == Ai.DISCARD_EVENT ) then
+			return Ai.DISCARD_EVENT
+		end
+	end
+	
+	return false
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc PRIVATE - This should never be called
+function Ai.StateMachineDef:Process(action, component)
+	if( action == nil or self.currentState == nil or component == nil ) then
+		return
+	end
+	
+	for k, v in pairs( self.traits ) do      
+    
+--~     PrintObject(self.traits)
+--~ 	fatal()
+        ModMisc_ProfileStart("ScarEncounterUpdate_" .. v.name)
+        
+		if( type(v[self.currentState][action]) == "function" ) then
+			local data = component.StateMachine:GetData( v.name, self.currentState )
+			if( v[self.currentState][action](component, data, v.params) ) then
+                ModMisc_ProfileEnd("ScarEncounterUpdate_" .. v.name)
+				return
+			end
+		elseif( type(v[self.currentState][action]) == "table" )then
+        
+            local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+            
+            
+            local data = component.StateMachine:GetData( v.name, self.currentState )
+            local f = v[self.currentState][action]
+            if( f[race] ~= nil ) then                
+                if(f[race](component, data, v.params))then
+                    ModMisc_ProfileEnd("ScarEncounterUpdate_" .. v.name)
+                    return
+                end
+            else
+                if(f.default)then
+                    if(f.default(component, data, v.params))then  
+                        ModMisc_ProfileEnd("ScarEncounterUpdate_" .. v.name)              
+                        return
+                    end
+                end
+            end
+            
+        end
+        
+        ModMisc_ProfileEnd("ScarEncounterUpdate_" .. v.name)
+        
+	end
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc PRIVATE - This should never be called
+function Ai.StateMachineDef:OnEnter(component)
+	self.timeInState = 0
+	self:Process("OnEnter", component)
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc This is called once a frame/tick to update the state machine
+function Ai.StateMachineDef:Update(component)
+    ModMisc_ProfileStart("ScarEncounterUpdate")
+    
+	self.timeActive = self.timeActive + 1
+	self.timeInState = self.timeInState + 1
+	self:Process("Update", component)
+    
+    ModMisc_ProfileEnd("ScarEncounterUpdate")
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc PRIVATE - This should never be called
+function Ai.StateMachineDef:OnExit(component)
+	self:Process("OnExit", component)
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Set a state.  The state is a string value
+function Ai.StateMachineDef:GotoState(state, component)
+	self:OnExit(component)
+	self.currentState = state
+	self:OnEnter(component)
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Returns the string id of the current state
+function Ai.StateMachineDef:GetState()
+	return self.currentState
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Returns the duration the Statemachine has been active
+function Ai.StateMachineDef:GetTimeActive()
+	return self.timeActive
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Returns the duration of the current state
+function Ai.StateMachineDef:GetTimeInState()
+	return self.timeInState
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Returns the Data the Statemachine
+function Ai.StateMachineDef:GetData(trait, state)
+	if( self.data[trait] == nil ) then
+		self.data[trait] = {}
+	end
+	if( self.data[trait][state] == nil ) then
+		self.data[trait][state] = {}
+	end
+	return self.data[trait][state]
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Draws a debug message to the screen for the component selected
+function Ai.StateMachineDef:DebugRender(component)
+
+	local sg_temp = SGroup_CreateIfNotFound( "sg_temp_DebugRender" )
+	SGroup_Clear(sg_temp)
+	Misc_GetSelectedSquads( sg_temp, false )
+	if( SGroup_ContainsSGroup( sg_temp, component.sgroup, false ) ) then
+		local row = 0
+		local rowSpacer = 0.022
+		SB_PrintOnScreen( "Name:   ".."none", "StateMachineDebugRender"..row, 0, 0.75, 0.10+(row*rowSpacer) )
+		row = row + 1
+		SB_PrintOnScreen( "State:  "..self.currentState, "StateMachineDebugRender"..row, 0, 0.75, 0.10+(row*rowSpacer) )
+		row = row + 1
+		SB_PrintOnScreen( "Times: "..self.timeActive.." / "..self.timeInState, "StateMachineDebugRender"..row, 0, 0.75, 0.10+(row*rowSpacer) )
+		row = row + 1
+		SB_PrintOnScreen( "DATA", "StateMachineDebugRender"..row, 0, 0.75, 0.10+(row*rowSpacer) )
+		row = row + 1
+			
+		for kTrait, vTrait in pairs( self.traits ) do
+			if( self.data[vTrait.name] and self.data[vTrait.name][self.currentState] ) then
+				SB_PrintOnScreen( " - "..vTrait.name, "StateMachineDebugRender"..row, 0, 0.75, 0.10+(row*rowSpacer) )
+				row = row + 1
+				for k, v in pairs( self.data[vTrait.name][self.currentState] ) do
+					if( type(v) ~= "table" ) then
+						SB_PrintOnScreen( " - - "..k.." = "..tostring(v), "StateMachineDebugRender"..row, 0, 0.75, 0.10+(row*rowSpacer) )
+						row = row + 1
+					end
+				end
+			end
+		end
+	end
+	
+	SGroup_Destroy(sg_temp)
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Clears the render frame
+function Ai.ClearDebugRender()
+
+	for row = 0, 20 do
+		dr_clear("StateMachineDebugRender"..row)
+	end
+	
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Enables/Disables Debug Rendering
+function Ai.EnabledDebugRender(on)
+
+	if( on == false ) then
+		Ai.isEnabledDebugRender	= false
+	else
+		Ai.isEnabledDebugRender	= true
+	end
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Is Debug Rendering Enabled
+function Ai.IsEnabledDebugRender()
+	return Ai.isEnabledDebugRender	
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Enables AI
+function Ai.Enable()
+	Ai.isEnabled	= true
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Disables AI
+function Ai.Disable()
+	Ai.isEnabled	= false
+end
+
+-------------------------------------------------------------------------------
+--? @shortdesc Is AI Enabled
+function Ai.IsEnabled()
+	return Ai.isEnabled
+end
+
+-------------------------------------------------------------------------
+Ai.ComponentManager = {
+	componentList = {},
+	componentBySquadList = {},
+}
+
+-- reload components on load
+function Ai.ComponentManager.Restore()
+	for k,component in pairs(Ai.ComponentManager.componentList) do 
+		Ai.ComponentManager._LevelComponent(component)
+		Ai.ComponentManager._SetWargear(component)
+		Ai.ComponentManager._UpgradeComponent(component)
+		Ai.ComponentManager._SetModifiers(component)
+	end
+end
+
+function Ai.ComponentManager._LevelComponent(component)
+	if(component.level)then
+		print("Found level")
+		SGroup_SetLevel(component.sgroup, component.level)
+	end
+	
+	if(component.colour)then
+		ScarGameBackend.SetTeamColour(component.sgroup, component.colour)	
+	end
+end
+
+function Ai.ComponentManager._UpgradeComponent(component)
+	if(component.def.upgrades)then
+		local sgroup = component.sgroup
+		for k,v in pairs(component.def.upgrades)do
+			local uid = Util_GetUpgradeID(v)
+			Cmd_InstantSquadUpgrade(sgroup, uid)
+		end		
+	end
+end
+
+function Ai.ComponentManager._SetWargear(component)
+	local sgroup = component.sgroup
+	
+	if(component.def.wargear)then
+		if(type(component.def.wargear) == "table")then
+			for k,v in pairs(component.def.wargear) do
+				SGroup_EquipWargear(sgroup, v)
+			end
+		elseif(type(component.def.wargear) == "string")then
+			SGroup_EquipWargear(sgroup, component.def.wargear)				
+		end
+	end
+end
+
+function Ai.ComponentManager._SetModifiers(component)
+	local sgroup = component.sgroup
+	if(SGroup_IsEmpty(sgroup))then return end
+	if(component.def.modifiers)then
+		if(type(component.def.modifiers) == "table")then
+			for k,modifierData in pairs(component.def.modifiers) do
+				modifierData.modifierList = {}
+				local modifier = Modifier_Create(MAT_Squad, modifierData.modType, MUT_Multiplication, modifierData.exclusive, modifierData.value, "")
+				
+				local f = function(id, index, squad)
+					table.insert(modifierData.modifierList, Modifier_ApplyToSquad(modifier, squad))
+				end
+				
+				SGroup_ForEach(sgroup, f)
+			end		
+		end
+	end
+end
+
+Scar_AddRestore(Ai.ComponentManager.Restore)
+
+-------------------------------------------------------------------------
+--? @shortdesc Add a component to the manager
+function Ai.ComponentManager:Add(component)
+	table.insert( self.componentList, component )
+	
+	function AddToComponentBySquadList(gid, idx, sid)
+		StatePrint( "Squad:", sid.id, "Attached to:", component.encounter.id)
+		self.componentBySquadList[sid.id] = component
+	end
+	
+	SGroup_ForEachEx(component.sgroup, AddToComponentBySquadList, true, true)
+end
+
+-------------------------------------------------------------------------
+--? @shortdesc Get a component
+function Ai.ComponentManager:GetComponent(identifier)
+	if( scartype(identifier) == ST_SQUAD ) then
+		return self.componentBySquadList[identifier.id]
+	end
+	return nil
+end
+
+-------------------------------------------------------------------------
+--? @shortdesc Send and event to the component
+function Ai.ComponentManager:SendEvent(event)
+
+	for k, v in pairs (self.componentList) do
+		
+		local result = nil
+		
+		if( event.pos == nil or event.radius == nil ) then					
+			if( v.StateMachine ~= nil ) then
+				result = v.StateMachine:OnEvent( v, event )
+			end
+			
+		else
+			if( Prox_AreSquadsNearMarker( v.sgroup, event.pos, ANY, event.radius) ) then
+				if( v.StateMachine ~= nil ) then
+					result = v.StateMachine:OnEvent( v, event )
+				end
+			end
+		end
+		
+		if( result == Ai.DISCARD_EVENT ) then
+			return Ai.DISCARD_EVENT
+		end
+		
+	end
+	
+end
+
+-------------------------------------------------------------------------
+--? @shortdesc Update all components
+function Ai.ComponentManager:UpdateComponents()
+	Ai.UpdateCount = Ai.UpdateCount + 1
+    ModMisc_ProfileStart("ScarEncounterUpdates")
+    
+	if( not Ai.IsEnabled() ) then
+        ModMisc_ProfileEnd("ScarEncounterUpdates")
+		return
+	end
+	
+	Ai.ClearDebugRender()
+	
+	for k, v in pairs (self.componentList) do
+        -- Every update is done only every 10th sim tick
+        -- They are offset from eachother to spread the processing load
+        if(Ai.UpdateCount % 10 == k % 10)then
+            v.StateMachine:Update( v )
+            
+            if( Ai.IsEnabledDebugRender() ) then
+                v.StateMachine:DebugRender( v )
+            end
+        end		
+	end
+    
+    ModMisc_ProfileEnd("ScarEncounterUpdates")
+end
+
+-------------------------------------------------------------------------
+--? @shortdesc Returns the string id of a given components state
+function Ai.GetState(component)
+	return component.StateMachine:GetState()
+end

@@ -1,0 +1,33 @@
+import( 'util/lua_consts.ai' )
+
+-- list of buildorders that can be used by the personalities
+
+tyranids_buildorder = {
+	
+	-- this build-order isn't optimal, but will add some flavor and randomness, even for Hard/Expert.
+	{
+		name = "Play by my own rules.",
+		list = {
+		}
+	},
+
+}
+
+s_personality.demand_diversity_bonus_multiplier = 1.0
+
+s_personality.securing_structures = 
+{
+	{pbg = EBP.TYR_SECURE, buildstyle = BS_Secure, demand_type = DEMAND_Building},
+	{pbg = EBP.TYR_REINFORCEPOINT, buildstyle = BS_Defend, demand_type = DEMAND_Building},	
+}
+
+s_personality.resource_structures = 
+{
+	{pbg = EBP.TYR_GENERATOR, demand_type = DEMAND_Building,},
+}
+
+s_personality.tech_tier_upgrades = 
+{
+	{pbg = UPG.TYR_TIER2,},
+	{pbg = UPG.TYR_TIER3,},
+}
