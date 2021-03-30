@@ -1,0 +1,17 @@
+import('personality/base_standard.ai')
+import('personality/necron/buildorder_lib.ai')
+
+-- randomly choose a build order from the given list defined in the buildorders lib 
+s_personality.buildorder = RandomlyChooseBuildorder( necron_buildorder )
+
+s_personality.securing_structures = 
+{
+}
+
+s_personality.resource_structures = 
+{
+}
+
+s_personality.tech_tier_upgrades = 
+{
+}

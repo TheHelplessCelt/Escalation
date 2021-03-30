@@ -27,11 +27,11 @@ MaximumDeclination = 90
 DefaultOrbit = 225
 
 --Default distance from target for the camera
-DefaultDistance = 90
+DefaultDistance = 80
 --Minimum distance from the target for the camera
 MinimumDistance = 1.1
 --Maximum distance from the target for the camera
-MaximumDistance = 110
+MaximumDistance = 100
 
 --Controls how quickly the camera transitions when double clicking on the map and reseting the camera to default
 PositionTransitionSpeed = 400
@@ -43,7 +43,7 @@ DistanceExponent = 1.6
 DistanceMultiplier = 0.04
 
 --Field of view of the camera, in degrees when viewed on a 4:3 monitor.  Widescreens will procedurally be adjusted to be wider.
-FieldOfView = 40
+FieldOfView = 50
 --Distance to the near clip plane of the camera
 NearClipDistance = 1
 --Distance to the far clip plane of the camera

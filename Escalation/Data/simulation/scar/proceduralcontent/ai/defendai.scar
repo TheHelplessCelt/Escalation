@@ -1,0 +1,249 @@
+--- Defend AI
+-- DefendBase
+
+Ai.Traits.DefendBase.Idle.Update = {}
+
+function Ai.Traits.DefendBase.Idle.Update.eldar(component, data)
+    local lastMove = data.lastMove or 0
+    
+    if(Squad_IsAttacking(SGroup_GetSpawnedSquadAt(component.sgroup, 1), 1))then
+        component.StateMachine:GotoState( "Combat", component )
+    end
+    
+    if(lastMove > 0)then
+        data.lastMove = data.lastMove - 1
+        return
+    else
+        data.target = Defend.Ai.GetTarget(component.sgroup, nil, 5)
+        if(data.target == nil) then
+            return
+        end
+        Cmd_AttackMove( component.sgroup, data.target)
+        data.lastMove = 5
+        return true
+    end
+end
+ 
+function Ai.Traits.DefendBase.Idle.Update.orks(component, data)
+    local lastMove = data.lastMove or 0
+    local target = data.target or Defend.Ai.GetTarget(component.sgroup)
+    data.target = target -- set the target so we dont switch targets constantly
+    
+    if(target == nil)then
+        return false
+    end
+    
+    if(Squad_IsAttacking(SGroup_GetSpawnedSquadAt(component.sgroup, 1), 1))then
+        component.StateMachine:GotoState( "Combat", component )
+    end
+    
+    if(lastMove > 0)then
+        data.lastMove = data.lastMove - 1
+        return
+    else
+        Cmd_AttackMove( component.sgroup, target)
+        data.lastMove = 5
+        return true
+    end
+end
+
+Ai.Traits.DefendBase.Idle.Update.space_marines  = Ai.Traits.DefendBase.Idle.Update.eldar
+Ai.Traits.DefendBase.Idle.Update.tyranids       = Ai.Traits.DefendBase.Idle.Update.orks 
+
+
+
+function Ai.Traits.DefendBase.Combat.Update(component, data)
+    if(SGroup_IsUnderAttack(component.sgroup, ANY, 1) == false and SGroup_IsDoingAttack(component.sgroup, ANY, 1) == false)then
+        local target = Defend.Ai.GetTarget(component.sgroup)
+        if(target ~= nil)then
+            Cmd_AttackMove(component.sgroup, target, true)
+        end
+        return false
+    end    
+end
+
+-- Grenadier
+Ai.Traits.DefendGrenadier.Combat.Update = {}
+function Ai.Traits.DefendGrenadier.Combat.Update.orks(component, data)
+    data.nextGrenade = data.nextGrenade or PC_Rand(10,25)
+    
+    -- find a target
+    if(data.target == nil or (scartype(data.target) == ST_EGROUP and EGroup_Count(data.target) <= 0))then        
+        data.target = Defend.Ai.GetPlayerTarget(component.sgroup)
+    end
+    
+    if(data.target ~= nil)then    
+        if(data.nextGrenade > 0)then 
+            data.nextGrenade = data.nextGrenade - 1           
+            return false
+        else  
+            data.nextGrenade = PC_Rand(25,35) 
+            local thrower = SGroup_GetRandomSpawnedSquad(component.sgroup)
+            Cmd_Ability(thrower, abil_camp_npc_ork_stikkbomb, data.target, false)
+            return true
+        end
+    end
+end 
+
+-- Garrison
+function Ai.Traits.DefendGarrison.Combat.Update(component, data) 
+    if(data.nextCheck ~= nil and data.nextCheck <= 0)then
+        data.target = Defend.Ai.GetWardTarget(component.sgroup)
+        if(data.target == nil) then
+            return
+        end
+        data.building = Util_GarrisonNearbyBuilding( component.sgroup, Util_GetPosition(data.target), 20)
+        if(data.building ~= nil)then
+            return true
+        else
+            data.nextCheck = 3
+        end
+    else
+        if(data.nextCheck == nil)then
+            data.nextCheck = 3
+        end
+        
+        data.nextCheck = data.nextCheck - 1
+    end
+    
+    return false
+end
+
+-- DefendDetpack
+Ai.Traits.DefendDetpack.Combat.Update = {}
+function Ai.Traits.DefendDetpack.Combat.Update.orks(component, data)
+    data.target = data.target or Defend.Ai.GetWardTarget(component.sgroup)
+    if(not data.aura) then
+        data.aura = true
+    end    
+    if(data.target == nil) then
+        return
+    end
+    if(World_DistancePointToPoint(Util_GetPosition(component.sgroup), Util_GetPosition(data.target)) < 10)then
+        local thrower = SGroup_GetRandomSpawnedSquad(component.sgroup)
+        Cmd_Ability(thrower, abil_camp_npc_ork_splosives, data.target, false)
+        data.target = Defend.Ai.GetRandomWardTarget(component.sgroup, nil, 11)
+        return true
+    else
+        Cmd_Move(component.sgroup, data.target)
+        return true
+    end
+end
+
+
+-- Regroup
+Ai.Traits.DefendRegroup.Combat.Update = {}
+
+function Ai.Traits.DefendRegroup.Combat.Update.tyranids(component, data)
+end
+
+function Ai.Traits.DefendRegroup.Combat.Update.default(component, data)
+    local getNumEntities = function(sgroup)
+        local count = 0
+        for i = 1, SGroup_CountSpawned(sgroup)do 
+            count = count + Squad_Count(SGroup_GetSpawnedSquadAt(sgroup, i))
+        end
+        
+        return count
+    end
+    
+    if( not data.returned and data.retreated)then
+        component.StateMachine:GotoState( "Idle", component )
+        return true
+    end
+    
+    if(not data.size)then
+        data.returned = false
+        data.size = getNumEntities(component.sgroup)
+    end
+    
+    if((not data.returned) and getNumEntities(component.sgroup) < data.size)then
+        data.retreated = true
+        Cmd_RetreatToLocation(component.sgroup, component.startingPosition)
+        return true
+    end
+end
+
+function Ai.Traits.DefendRegroup.Idle.Update(component, data)
+    local combatData = component.StateMachine.data.DefendRegroup.Combat
+    if(combatData and combatData.retreated and not data.returnTimer)then 
+        data.returnTimer = PC_Rand(5,20)
+    end
+    
+    if(data.returnTimer)then
+        data.returnTimer = data.returnTimer - 1
+    
+        if(data.returnTimer <= 0)then
+            local target = Defend.Ai.GetWardTarget(component.sgroup)
+            if(target ~= nil) then
+                Cmd_Attack(component.sgroup, target)
+                combatData.returned = true
+                return true
+            end
+        end
+        
+        return true
+    end
+    
+end
+
+
+-- Jumpers
+function Ai.Traits.DefendJumper.Idle.Update(component, data)
+    data.target = data.target or Defend.Ai.GetTarget(component.sgroup)
+    
+    if(scartype(data.target) == ST_SQUAD and Squad_IsInHoldEntity(data.target))then
+        data.target = Defend.Ai.GetWardTarget(component.sgroup)
+    end
+
+    if(data.target ~= nil and not data.jumped and World_DistancePointToPoint(Util_GetPosition(component.sgroup), Util_GetPosition(data.target)) <= 60)then
+        data.jumped = true
+        Cmd_JumpToPosition(component.sgroup,  Util_GetPosition(data.target))
+    end
+end
+
+Ai.Traits.DefendJumper.Combat.Update = {}
+
+function Ai.Traits.DefendJumper.Combat.Update.default(component, data)
+    data.nextJump = data.nextJump or 0
+
+    if(data.nextJump <= 0)then
+        data.target = Defend.Ai.GetTarget(component.sgroup, nil, 25)
+        data.nextJump = PC_Rand(10, 20)
+        if(target == nil)then
+            return
+        end
+        Cmd_JumpToPosition(component.sgroup,  Util_GetPosition(data.target))
+        
+    else
+        data.target = data.target or Defend.Ai.GetTarget(component.sgroup)
+        if(data.target ~= nil)then
+            Cmd_Attack(component.sgroup, data.target)
+            data.nextJump = data.nextJump - 1
+        end
+    end
+end
+
+function Ai.Traits.DefendJumper.Combat.Update.eldar(component, data)
+    data.jumpCount = data.jumpCount or 0
+    data.coolDown = data.coolDown or 5
+    if(data.jumpCount <= 2 and SGroup_IsUnderAttack(component.sgroup, ANY, 1))then
+        local target = Defend.Ai.GetTarget(component.sgroup, 100, 25)
+        data.nextJump = PC_Rand(2, 5)
+        if(target == nil)then
+            return
+        end
+        data.jumpCount = data.jumpCount + 1
+        data.coolDown = 5
+        Cmd_JumpToPosition(component.sgroup,  Util_GetPosition(target), false)
+    else
+        data.coolDown = data.coolDown - 1
+        if(data.coolDown <= 0)then
+            data.jumpCount = 0
+        end
+        local target = Defend.Ai.GetWardTarget(component.sgroup)
+        if(target ~= nil) then
+            Cmd_AttackMove(component.sgroup, target, false)
+        end
+    end
+end

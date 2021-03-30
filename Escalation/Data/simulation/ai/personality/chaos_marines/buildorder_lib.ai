@@ -1,0 +1,35 @@
+import( 'util/lua_consts.ai' )
+
+-- list of buildorders that can be used by the personalities
+
+chaos_marines_buildorder = {
+
+	-- this build-order isn't optimal, but will add some flavor and randomness, even for Hard/Expert.
+	{
+		name = "Play by my own rules.",
+		list = {
+		}
+	},
+}
+
+s_personality.demand_diversity_bonus_multiplier = 2.5
+
+s_personality.securing_structures = 
+{
+	{pbg = EBP.CSM_SECURE, buildstyle = BS_Secure, demand_type = DEMAND_Building},
+	{pbg = EBP.CSM_TURRET, buildstyle = BS_Defend, demand_type = DEMAND_Building},
+	{pbg = EBP.CSM_REINFORCEPOINT1, buildstyle = BS_Defend, demand_type = DEMAND_Building},
+	{pbg = EBP.CSM_REINFORCEPOINT2, buildstyle = BS_Defend, demand_type = DEMAND_Building},
+	{pbg = EBP.CSM_REINFORCEPOINT3, buildstyle = BS_Defend, demand_type = DEMAND_Building},
+}
+
+s_personality.resource_structures = 
+{
+	{pbg = EBP.CSM_GENERATOR, demand_type = DEMAND_Building,},
+}
+
+s_personality.tech_tier_upgrades = 
+{
+	{pbg = UPG.CSM_TIER2,},
+	{pbg = UPG.CSM_TIER3,},
+}

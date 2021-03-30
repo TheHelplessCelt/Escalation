@@ -1,0 +1,74 @@
+import "Util/lua_consts.ai"
+
+-- returns the how the AI team compares to the enemy team (negative means AI is losing)
+function ArmyEval_AITeamVsEnemyDiff( )
+	return PlayerStats_CompareTeamCombatRatingDiff(s_self_team, cache.primary_enemy_team);
+end
+
+-- returns the how the AI team compares to the closest enemy team (negative means AI is losing)
+function ArmyEval_AITeamVsClosestEnemyPercentageDiff( )
+	local close_enemy = AIPlayer_GetClosestEnemy(s_selfplayer)
+	
+	if (close_enemy == nil) then
+		return 1.0
+	end
+	
+	return PlayerStats_ComparePlayerCombatRatingPercentageDiff(s_self_modplayer, close_enemy);
+end
+
+-- returns string with each army and their ratings and antiratings + evaluation vs other players
+function CreateArmyEvalDebugString()	
+	local result_string = "Debugging Player "..s_selfplayerid.." (Army Comparison)\n"
+
+	--RATINGS
+
+	local totalplayers = World_GetPlayerCount()
+	for i=1, totalplayers do
+		local player = World_GetPlayerAt( i )
+			
+		local playerstr = tostring( Player_GetID( player ) )
+			
+		if (Player_GetID( player ) == AI_GetPlayerID()) then
+			playerstr = playerstr.."(AI)"
+		end
+			
+		-- Name
+		result_string = result_string .. "\n" .. playerstr .. "\n"
+			
+		-- Class
+		local temp = string.format("%.2f", PlayerStats_GetTotalSquadClassRatingSum( player ) )
+		result_string = result_string .. temp .. "\t"
+			
+		-- AntiClass
+		local temp = string.format("%.2f", PlayerStats_GetTotalSquadAntiClassRatingSum( player ) )
+		result_string = result_string .. temp .. "\t"
+		
+		result_string = result_string .. "\n"
+	end
+	
+	result_string = result_string .. "\n"
+
+	-- compare local player against each of these players
+	local totalplayers = World_GetPlayerCount()
+	for i=1, totalplayers do
+		local player = World_GetPlayerAt( i )
+			
+		-- make sure this player is not the local AI
+		if (Player_GetID( player ) ~= AI_GetPlayerID()) then
+
+			-- Name
+			result_string = result_string .. "\nVS:"..tostring( Player_GetID( player ) ) .. "\n"
+
+			local total_diff = PlayerStats_ComparePlayerCombatRatingDiff( AI_GetPlayer(), player )
+			local percent_diff = PlayerStats_ComparePlayerCombatRatingPercentageDiff( AI_GetPlayer(), player )
+				
+			-- Total / Percentage
+			local tempz = string.format("%.2f (%.1f%%)", total_diff, percent_diff*100 )
+			result_string = result_string .. "\t Total:"..tempz .. "\n"
+		end
+	end
+
+	return result_string
+end
+
+

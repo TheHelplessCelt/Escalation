@@ -1,0 +1,4082 @@
+
+import("ProceduralContent/AI/StateMachine/StateMachine.scar")
+import("Util/print.scar")
+
+AIPrint = CreateSpecialPrint("AI")
+LogicPrint = CreateSpecialPrint("ACTION LOGIC:")
+AIPrint = function () return end -- comment me out if you want to see the AI debug
+-------------------------------------------------------------------------
+LogicPrint = function() end
+
+-- Implementation
+-- Definitions
+
+RegisterTrait( "Default" )
+RegisterTrait( "Combatant" )
+RegisterTrait( "Healer" )
+RegisterTrait( "Repair" ) -- Added by Sacha for Techmarine NPC. 
+RegisterTrait( "TurretBuilder" ) -- Added by Sacha for Techmarine NPC. 
+RegisterTrait( "TurretBuilderXP2" ) -- Added by Jeff for cy south techmarine npc. Plans to make it usable by any race. 
+RegisterTrait( "AttackThing" ) -- Added by Sacha
+RegisterTrait( "PatrolABC" ) -- Added by Sacha
+RegisterTrait( "Desperation" ) -- Added by Sacha 
+RegisterTrait( "DefendSGroup" ) -- Added by Sacha
+RegisterTrait( "FollowSGroup" ) -- Added by Sacha
+RegisterTrait( "ChangeStance") -- Added by Sacha
+RegisterTrait( "Unload") -- Added by Sacha
+RegisterTrait( "AntiMelee") -- Added by Sacha
+RegisterTrait( "MakeAmbient") -- Added by Sacha
+RegisterTrait( "FindAndReport" ) -- Added by Frank -> for x14 patrols
+RegisterTrait( "CombatFunction" ) -- Added by Frank
+RegisterTrait( "BossHealer" )
+RegisterTrait( "Garrison" )
+RegisterTrait( "Garrisoned" )
+RegisterTrait( "Wander" )
+RegisterTrait( "RandomPatrol" )
+RegisterTrait( "Cover" )
+RegisterTrait( "GetHelp" )
+RegisterTrait( "SentryAlert" )
+RegisterTrait( "Helpful" )
+RegisterTrait( "Sniper" )
+RegisterTrait( "Charge" )
+RegisterTrait( "Cowardly" )
+RegisterTrait( "Reclaimer" )
+RegisterTrait( "JumpMelee" )
+RegisterTrait( "JumpPatrol" )
+RegisterTrait( "Mobile" )
+RegisterTrait( "AntiArmor" )
+RegisterTrait( "AV" )
+RegisterTrait( "Bustout" )
+RegisterTrait( "AntiAvitus" ) 
+RegisterTrait( "DefendBase" )
+RegisterTrait( "DefendGrenadier" )
+RegisterTrait( "DefendGarrison" )
+RegisterTrait( "DefendDetpack" )
+RegisterTrait( "DefendRegroup" )
+RegisterTrait( "DefendJumper" )
+
+RegisterTrait( "DropWargear" ) -- temp trait until wargear is fixed
+RegisterTrait( "DropRandomWargear" ) -- temp trait until wargear is fixed
+RegisterTrait( "DropX13ApothWargear" )
+RegisterTrait( "DropX13TechWargear" )
+RegisterTrait( "DropX13FCWargear" )
+RegisterTrait( "InstaWorship") 
+
+RegisterTrait( "Raider" )
+RegisterTrait( "CallReinforcements" )
+RegisterTrait( "Grenadier" )
+RegisterTrait( "Artillery" )
+RegisterTrait( "Ambush" )
+RegisterTrait( "AmbushPosition" )
+RegisterTrait( "InstaRetreat" )
+RegisterTrait( "Caster" )
+RegisterTrait( "HitAndRun" )
+RegisterTrait( "Entrance" )
+RegisterTrait( "Rally" )
+RegisterTrait( "Ownership" )
+-- Boss Traits (Consider removing)
+RegisterTrait( "Boss" )
+RegisterTrait( "BossVeneratedDreadnought" )
+RegisterTrait( "TankBoss" )
+RegisterTrait( "StealthBoss" )
+RegisterTrait( "MiniBoss" )
+RegisterTrait( "ReplaceUnit" )
+RegisterTrait( "Mine" )
+
+RegisterState( "Idle" )
+RegisterState( "Combat" )
+RegisterState( "Healing" )
+RegisterState( "Retreat" )
+RegisterState( "Return" )
+RegisterState( "Dead" )
+RegisterState( "Helping" )
+
+RegisterEvent( "InCombat" )
+RegisterEvent( "EnemySpotted" )
+RegisterEvent( "CallForHelp" )
+RegisterEvent( "ReinforcementsInbound" )
+RegisterEvent( "HealthBelow50" )
+RegisterEvent( "BossIsHurt" )
+
+InitializeAllTraitsAndStates()
+
+
+import("ProceduralContent/AI/defendAi.scar")
+-------------------------------------------------------------------------
+-- Default
+--
+-- Default state, does not need to be added to data
+
+function DefaultUpdate(component, data)
+	
+    if(SGroup_IsEmpty(component.sgroup)) then
+        component.StateMachine:GotoState( "Dead", component )
+        return true
+    end
+     
+    if( component.StateMachine:GetState() ~= "Combat" 			and
+		component.StateMachine:GetState() ~= "Retreat" 			and
+		(	SGroup_IsUnderAttack(component.sgroup, ANY, 5)	or
+			SGroup_IsDoingAttack(component.sgroup, ANY, 5) 	)	) then
+		
+		local eventCombat = { id = Ai.Events.InCombat, sender = component }
+		component.StateMachine:OnEvent( component, eventCombat )
+    end
+    
+    if (SGroup_CountSpawned(component.sgroup) > 0) then
+		component.currentPosition = SGroup_GetPosition(component.sgroup)
+	end
+  	
+	-- This should be rethought.... it will get expensive.  Healers polling every 5 seconds in their idle ot combat states would be ok i think
+--~ 	if ( not SGroup_IsInHoldEntity( component.sgroup, ANY ) and data.noHealing ~= true ) then
+--~ 		for iSquad = 1, SGroup_CountSpawned( component.sgroup ) do
+--~ 			local squad = SGroup_GetSpawnedSquadAt( component.sgroup, iSquad )
+--~ 			for iEntity = 1, Squad_Count( squad ) do
+--~ 				local entity = Squad_EntityAt(squad, iEntity-1)
+--~ 				local thisHealth = Entity_GetHealth(entity) / Entity_GetHealthMax(entity)
+--~ 				if( thisHealth <= 0.5 ) then
+--~ 					AIPrint( component.StateMachine:GetTimeActive(), "Hurt, heal me", component)
+--~ 					local pos = Entity_GetPosition( entity )
+--~ 					local event = { 
+--~ 						id 		= Ai.Events.HealthBelow50,
+--~ 						sender 	= component,
+--~ 						pos 	= pos,
+--~ 						radius 	= 30,
+--~ 						entity 	= entity,
+--~ 					}
+--~ 					
+--~ 					Ai.ComponentMananger:SendEvent( event )
+--~ 				end
+--~ 			end
+--~ 		end
+--~ 	end
+	
+	return false
+end
+
+Ai.Traits.Default.Idle.Update = DefaultUpdate
+Ai.Traits.Default.Combat.Update = DefaultUpdate
+Ai.Traits.Default.Healing.Update = DefaultUpdate
+Ai.Traits.Default.Retreat.Update = DefaultUpdate
+
+
+-------------------------------------------------------------------------
+-- Combatant
+--
+-- Basic combat state, MOST units should have this.
+-- Can now take a "range" parameter which affects the radius in which this squad looks for nearby squads in combat to help out.
+
+function Ai.Traits.Combatant.OnEvent.InCombat(component, event, params)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "Combatant.OnEvent.InCombat", component)
+	component.StateMachine:GotoState( "Combat", component )
+	return true
+end
+
+function Ai.Traits.Combatant.OnEvent.EnemySpotted(component, event, params)
+
+	-- Infiltrated encounters do not react if they simply spot the player.  They only unstealth if attacked, or in very close proximity.
+	if(not SGroup_IsInfiltrated(component.sgroup, true))then
+	
+		AIPrint( component.StateMachine:GetTimeActive(), "Combatant.OnEvent.EnemySpotted", component)
+		
+		local pos = nil
+		
+		if( event.enemyPos ~= nil ) then
+			pos = event.enemyPos
+		elseif( event.pos ~= nil ) then
+			pos = event.pos
+		end
+		
+		if( pos ~= nil ) then
+			Cmd_AttackMovePos(component.sgroup, pos)
+		end
+		
+		component.StateMachine:GotoState( "Combat", component )
+		return true
+		
+	end
+
+end
+
+function Ai.Traits.Combatant.Combat.OnEnter(component, data, params)
+	data.countDown = 25
+end
+
+function Ai.Traits.Combatant.Idle.Update(component, data, params)
+	-- Infiltrated encounters do not assist allies in trouble.  They only unstealth if attacked, or in very close proximity.
+	local range = 15
+	local forceMelee = false
+	if params ~= nil then
+		if params.range ~= nil then
+			range = params.range
+		end
+		if params.forceMelee ~= nil then
+			forceMelee = params.forceMelee
+		end
+	end
+	if(not SGroup_IsInfiltrated(component.sgroup, true))then
+		if (SGroup_CountSpawned(component.sgroup) > 0) and (range > 0) then
+			-- Keep an eye peeled for friendly squads that are in combat.  Join combat if any are spotted within 20 meters.
+			local sg_CombatantTraitAllies = SGroup_CreateIfNotFound("sg_CombatantTraitAllies")
+			local CombatantTraitPlayerID = Squad_GetPlayerOwner( SGroup_GetSpawnedSquadAt( component.sgroup, 1 ) )
+			local pos_CombatantTraitPos = SGroup_GetPosition(component.sgroup)
+			
+			local sg_CombatantTraitAssailant = SGroup_CreateIfNotFound("sg_CombatantTraitAssailant")
+			
+			local eg_CombatantTraitAllies = EGroup_CreateIfNotFound("eg_CombatantTraitAllies")
+			
+			SGroup_Clear(sg_CombatantTraitAllies)
+			SGroup_Clear(sg_CombatantTraitAssailant)
+			EGroup_Clear(eg_CombatantTraitAllies)
+			
+			Player_GetAllSquadsNearMarker(CombatantTraitPlayerID, sg_CombatantTraitAllies, pos_CombatantTraitPos, 15)
+			Player_GetAllEntitiesNearMarker(CombatantTraitPlayerID, eg_CombatantTraitAllies, pos_CombatantTraitPos, 15)
+			
+			-- IMPERFECT LOGIC HERE.  Essentially, check if nearby allies were shot at or shooting in the last 2 seconds, and also that they're not
+			-- currently retreating (which can "pull" unwanted encounters).  Retreating check is dodgy, though, as it nearby retreating units may
+			-- not be the ones who were in combat recently.  Thus, if any retreaters are in range, the combat check is invalid for ALL squads.
+			if (SGroup_IsUnderAttack(sg_CombatantTraitAllies, ANY, 2) or SGroup_IsDoingAttack(sg_CombatantTraitAllies, ANY, 2)) and 
+				(not SGroup_IsRetreating(sg_CombatantTraitAllies, ANY)) then
+				-- Somebody nearby is fighting!  Go to combat mode.
+--~ 				print("IDLE ENCOUNTER SQUAD SPOTTED ALLIES IN TROUBLE, ENTERING COMBAT")
+				component.StateMachine:GotoState( "Combat", component )
+				
+				--Clobber whoever is attacking the ally.
+				SGroup_GetLastAttacker(sg_CombatantTraitAllies, sg_CombatantTraitAssailant)
+				if not SGroup_IsEmpty(sg_CombatantTraitAssailant) then
+					if forceMelee == true then
+						Cmd_AttackMeleeSGroup(component.sgroup, sg_CombatantTraitAssailant)
+					else
+						Cmd_AttackSGroup(component.sgroup, sg_CombatantTraitAssailant)
+--~ 					print("ASSAILANT SPOTTED.  ATTACKING HIM.")
+					end
+				end
+				
+				--Issue a one-time attack-move to the point where the combat-allies are located.
+		--~ 		Cmd_AttackMovePos(component.sgroup, SGroup_GetPosition(sg_CombatantTraitAllies))
+				return true
+			elseif (EGroup_IsUnderAttack(eg_CombatantTraitAllies, ANY, 2) or EGroup_IsDoingAttack(eg_CombatantTraitAllies, ANY, 2))then
+				-- Somebody nearby is fighting!  Go to combat mode.
+--~ 				print("IDLE ENCOUNTER SQUAD SPOTTED FRIENDLY BUILDING IN TROUBLE, ENTERING COMBAT")
+				component.StateMachine:GotoState( "Combat", component )
+		
+				--Issue a one-time attack-move to the point where the combat-allies are located.
+				Cmd_AttackMovePos(component.sgroup, EGroup_GetPosition(eg_CombatantTraitAllies))
+				return true
+			else
+				return false
+			end
+		end
+	end
+end
+
+function Ai.Traits.Combatant.Combat.Update(component, data, params)
+
+	local forceMelee = false
+	if params ~= nil then
+		if params.forceMelee ~= nil then
+			forceMelee = params.forceMelee
+		end
+	end
+    
+    if(SGroup_IsUnderAttack(component.sgroup, ANY, 10) == false and SGroup_IsDoingAttack(component.sgroup, ANY, 10) == false)then
+		
+		if( data.countDown == 0 ) then
+			AIPrint( component.StateMachine:GetTimeActive(), "** GOING TO IDLE **")
+			component.StateMachine:GotoState( "Idle", component )
+			return true
+		else
+			data.countDown = data.countDown - 1
+		end
+		
+	else
+		if SGroup_IsUnderAttack(component.sgroup, ANY, 10) and (SGroup_IsDoingAttack(component.sgroup, ANY, 10) == false) then
+			sg_combatantLastAttacker = SGroup_CreateIfNotFound("sg_combatantLastAttacker")
+			SGroup_GetLastAttacker(component.sgroup, sg_combatantLastAttacker)
+			Cmd_AttackSGroup(component.sgroup, sg_combatantLastAttacker)
+--~ 					print("ASSAILANT SPOTTED.  ATTACKING HIM.")
+		elseif SGroup_IsUnderAttack(component.sgroup, ANY, 10) and forceMelee == true then
+			sg_combatantLastAttacker = SGroup_CreateIfNotFound("sg_combatantLastAttacker")
+			SGroup_GetLastAttacker(component.sgroup, sg_combatantLastAttacker)
+			Cmd_AttackMeleeSGroup(component.sgroup, sg_combatantLastAttacker)
+		end
+		data.countDown = 25
+    end
+    
+	return false
+end
+
+-------------------------------------------------------------------------
+-- Reclaimer
+--
+-- If a stratagem is placed under player control and a Reclaimer is nearby, they'll move to attack that position and reclaim the stratagem.
+
+function Ai.Traits.Reclaimer.Idle.Update(component, data)
+	-- Keep an eye peeled for player-owned stratagems.
+
+	local eg_ReclaimerTraitEntities = SGroup_CreateIfNotFound("eg_ReclaimerTraitEntities")
+	local ReclaimerTraitPlayerID = ScarGameBackend.GetPlayer(1)
+	local pos_ReclaimerTraitPos = SGroup_GetPosition(component.sgroup)
+	
+	-- Fill the table below with all possible capturable points.
+	local ReclaimerFilterTable = {
+		ebps_game_strategic_point,
+		
+	}
+	
+	-- Get all entities belonging to the Player within 65 meters of the Reclaimer Squad.
+	Player_GetAllEntitiesNearMarker(ReclaimerTraitPlayerID, eg_ReclaimerTraitEntities, pos_ReclaimerTraitPos, 65)
+	
+	-- Check to see if any of those entities are Stratagems.
+	EGroup_Filter(eg_ReclaimerTraitEntities, ReclaimerFilterTable, FILTER_KEEP)
+	
+	if (EGroup_IsEmpty(eg_ReclaimerTraitEntities) == false) then
+		-- A stratagem nearby belongs to the player.  Attack!
+--~ 		print("IDLE RECLAIMER DETECTED A CAPTURED STRATAGEM. ATTACKING THAT POSITION...")
+		component.StateMachine:GotoState( "Combat", component )
+		
+		--Issue a one-time attack-move to the point where the captured entity is located.
+		Cmd_AttackMovePos(component.sgroup, EGroup_GetPosition(eg_ReclaimerTraitEntities))
+		return true
+	else
+		return false
+	end
+	
+end
+
+-- TO BE DONE: If not in immediate combat with the player, try to actually capture the entity.
+
+-------------------------------------------------------------------------
+-- Healer
+--
+-- Healer state, units with this will attempt to heal other units if they
+-- have the proper abilities
+
+function Ai.Traits.Healer.OnEvent.HealthBelow50(component, event)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "Healer.OnEvent.HealthBelow50", component)
+		
+	if( CanHeal(component, event.sender) ) then
+		IssueHealCommand(component, event.sender, event.entity)
+		local data = component.StateMachine:GetData( "Healer", "Healing" )
+		component.StateMachine:GotoState( "Healing", component )	
+		return Ai.DISCARD_EVENT
+	else
+		return false
+	end
+end
+
+function Ai.Traits.Healer.Idle.OnEnter(component, data)
+	local data = component.StateMachine:GetData( "Default", "Combat" )
+	--data.noHealing = true
+end
+
+function Ai.Traits.Healer.Healing.Update(component, data)
+
+	local squad = SGroup_GetSpawnedSquadAt( component.sgroup, 1 )
+	
+	if( (Squad_HasActiveCommand(squad) and Squad_GetActiveCommand(squad) ~= SQUADSTATEID_Ability) or component.StateMachine:GetTimeInState() > 15 ) then
+		AIPrint( component.StateMachine:GetTimeActive(), "Healer.Healing.Update: No longer in Ability state", component)
+        component.StateMachine:GotoState( "Idle", component )
+		return true
+	end
+	
+	return false
+end
+
+function IssueHealCommand(component, targetComponent, entity)
+
+	local abilityId = Util_GetAbilityID( "ability/campaign/NPC/race_marine/SM_Medkit_Target" )
+	Cmd_SquadAbilityEntity(component.sgroup, abilityId, entity )
+end
+
+function CanHeal(component, target)
+
+	local healer_squad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+	local healer_playerid = Squad_GetPlayerOwner(healer_squad)
+	local healer_race = Player_GetRaceName(healer_playerid)
+	
+	if healer_race == "orks" then
+		AIPrint( component.StateMachine:GetTimeActive(), "Can't Heal: I'm an Ork", component)
+		return false
+	end
+	
+	if( component.StateMachine:GetState() == "Healing" ) then
+		AIPrint( component.StateMachine:GetTimeActive(), "Can't Heal: Healing", component)
+		return false
+	end
+	
+	if( component.StateMachine:GetState() == "Retreat" ) then
+		AIPrint( component.StateMachine:GetTimeActive(), "Can't Heal: Retreating", component)
+		return false
+	end
+	
+	if( component == target ) then
+		AIPrint( component.StateMachine:GetTimeActive(), "Can't Heal: Self", component)
+		return false
+	end
+
+	return true
+end
+
+-------------------------------------------------------------------------
+-- Garrison
+--
+-- Units will garrison a nearby structure (if one can be found) as soon as
+-- combat begins
+
+function Ai.Traits.Garrison.Idle.OnEnter(component, data, params)
+	if SGroup_IsInHoldEntity( component.sgroup, ANY ) then
+		if data.startPosition ~= nil then
+			SGroup_Eject( component.sgroup, data.startPosition )
+		end
+	end
+	return false
+end
+
+function Ai.Traits.Garrison.Idle.Update(component, data, params)
+	-- at some point we can make a idle enter exit building
+	return false
+end
+
+function Ai.Traits.Garrison.Combat.OnEnter(component, data, params)
+	AIPrint( component.StateMachine:GetTimeActive(),  "Get in building" )
+	data.startPosition = SGroup_GetPosition( component.sgroup )
+	if params == nil then
+--~ 		Util_GarrisonNearbyBuilding(component.sgroup, component.startingPosition, 20, true)
+		Util_GarrisonNearbyBuilding(component.sgroup, data.startPosition, 20, true)
+	end
+	return true
+end
+
+function Ai.Traits.Garrison.Combat.Update(component, data, params)
+--~     if(data.playedGarrison and SGroup_IsInHoldEntity(component.sgroup, ANY))then
+--~         data.playedGarrison = true
+--~         print("Play Garrison Speech - GARRISON")
+--~         Actor_PlaySpeechWithoutPortrait(ACTOR.Tarkus, _GetRandomSpeech())
+--~     end
+	if params ~= nil and not SGroup_IsInHoldEntity(component.sgroup, ALL) then
+		data.startPosition = SGroup_GetPosition( component.sgroup )
+		if params.health ~= nil and SGroup_GetAvgHealth(component.sgroup) <= params.health then
+			Util_GarrisonNearbyBuilding(component.sgroup, data.startPosition, 20, true)
+			print("attempting to garrison")
+--~ 		elseif params.prox ~= nil and Prox_PlayerSquadsInProximityOfSquads(Player_FromId(1000), component.sgroup, params.prox, ANY, nil) then
+--~ 			Util_GarrisonNearbyBuilding(component.sgroup, data.startPosition, 20, true)
+--~ 		elseif params.prox ~= nil and Prox_PlayerSquadsInProximityOfSquads(Player_FromId(1001), component.sgroup, params.prox, ANY, nil) then
+--~ 			Util_GarrisonNearbyBuilding(component.sgroup, data.startPosition, 20, true)
+		end
+	elseif params == nil and not SGroup_IsInHoldEntity(component.sgroup, ALL) then
+		Util_GarrisonNearbyBuilding(component.sgroup, data.startPosition, 20, true)
+	end
+end
+
+function _GetRandomSpeech()
+    local t = {
+        9057729, -- LOCDB [9057729] 'Gunner in that building. Deploy explosives.' - 'Tarkus'
+        9057730, -- LOCDB [9057730] 'Fire from the window. Let fly grenades.' - 'Avitus'
+        9063734, -- LOCDB [9063734] 'Hostile gunner! Get a grenade in that building.' - 'Cyrus'
+        9063735, -- LOCDB [9063735] 'Heavy fire from that building. Use a grenade! ' - 'Thaddeus'
+    }                            
+
+    return t[PC_Rand(1, #t)]
+end
+
+function _OrkGetRandomRetreatSpeech()
+    local t = {
+        9036009,
+        9036010,
+        9036011,
+        9035867,
+        9035868,
+        9035869,
+        9035870,
+        9035871,
+        9035872,
+    }
+
+    return t[PC_Rand(1, #t)]
+end
+
+function _SMGetRandomRetreatSpeech()
+    local t = {
+        9036011,
+    }
+
+    return t[PC_Rand(1, #t)]
+end
+
+function _EldarGetRandomRetreatSpeech()
+    local t = {
+        9036011,
+    }
+
+    return t[PC_Rand(1, #t)]
+end
+
+-------------------------------------------------------------------------
+-- Charge
+--
+-- Units charge towards the player's squads before the player is in sight.
+-- Currently leaves them where it drops them after this command is given.  Enemy will likely chase to eternity.
+
+
+function Ai.Traits.Charge.Idle.OnEnter(component, data, params)
+	-- Idle?  Return to original position if not already nearby.
+
+	if not Prox_AreSquadsNearMarker( component.sgroup, component.startingPosition, true, 20) then
+		Cmd_Move( component.sgroup, component.startingPosition )
+	end
+
+	return false
+end
+
+
+function Ai.Traits.Charge.Idle.Update(component, data, params)
+	-- If players are nearby, go into combat.  "Nearby" is a greater distance than normal.
+	-- Should not trigger on infiltrated or dead squads!!!
+	local sg_PotentialChargeTarget = SGroup_CreateIfNotFound("sg_PotentialChargeTarget")
+	local dist = 70
+	if (params ~= nil) then
+		dist = params.distance or 70
+	end
+	
+	SGroup_Clear(sg_PotentialChargeTarget)
+		
+	Team_GetAllSquadsNearMarker(HUMANS, sg_PotentialChargeTarget, component.startingPosition, dist)
+	
+	SGroup_FilterInfiltrated(sg_PotentialChargeTarget, FILTER_REMOVE)
+	SGroup_FilterUnconscious(sg_PotentialChargeTarget, FILTER_REMOVE)
+	
+	--Are all non-infiltrated squads within range alive?  If yes, go gettum.
+	if (not SGroup_IsEmpty(sg_PotentialChargeTarget)) then
+		
+		component.StateMachine:GotoState( "Combat", component )	
+		
+		return true
+	end
+	
+	return false
+end
+
+function Ai.Traits.Charge.Combat.OnEnter(component, data, params)
+	-- Just entered combat.  Charge the player.
+	
+	local sg_ChargeTarget = SGroup_CreateIfNotFound("sg_ChargeTarget")
+	local dist = 70
+	if (params ~= nil) then
+		dist = params.distance or 70
+	end
+
+	SGroup_Clear("sg_ChargeTarget")
+
+	Team_GetAllSquadsNearMarker(HUMANS, sg_ChargeTarget, component.startingPosition, dist)
+	
+	--Infiltrated units are not valid charge targets.
+	SGroup_FilterInfiltrated(sg_ChargeTarget, FILTER_REMOVE)
+	SGroup_FilterUnconscious(sg_ChargeTarget, FILTER_REMOVE)
+	
+	if (not SGroup_IsEmpty(sg_ChargeTarget)) then
+		if SGroup_CountSpawned(sg_ChargeTarget) > SGroup_CountDeSpawned(sg_ChargeTarget) then
+			local squad_TargetSquad = SGroup_GetSpawnedSquadAt(sg_ChargeTarget, 1)
+			local pos_TargetPosition = Squad_GetPosition(squad_TargetSquad)
+		
+			Cmd_AttackMovePos( component.sgroup, pos_TargetPosition)
+		end
+	end
+	
+	return false
+end
+
+
+-------------------------------------------------------------------------
+-- Bustout
+--
+-- Takes the following params: 
+--	name = "Bustout"
+--	triggermarker = String, contains name of marker that spawns encounter when player steps on it (defaults to encounter start position)
+--	delay = Number of seconds from trigger that spawn & bustout occurs (defaults to 0)
+--  egrouptobust = String, contains name of egroup to be destroyed when encounter spawns (the thing the encounter "busts out of")  (nothing is busted if left blank)
+--	destroyfx = String, contains DCA action to be played on busted object (no fx play if this OR egrouptobust is left blank)
+--	jumpfrom = String, contains name of marker to head for upon spawning and then jump to the "jumpto" marker.
+--  jumpto = String, contains name of marker to jump to upon arrival at "jumpfrom" marker.  After landing, attack-move to the trigger.
+--
+-- Hey Koolaid!  Encounter despawns immediately @ start of game.  After the player steps on a trigger, the encounter spawns and busts out of a hiding place,
+-- such as a pipe or snowdrift or hangar.
+
+
+function Ai.Traits.Bustout.Idle.OnEnter(component, data, params)
+	-- Should only ever occur once.
+
+	if (component.spawned == nil) then
+		-- Ensures the encounter only despawns once ever
+		SGroup_DeSpawn(component.sgroup)
+		component.spawned = false
+		component.triggered = false
+		component.bustedout = false
+		
+		component.countdown = 0
+		component.destroyfx = false
+		component.egrouptobust = false
+		component.needtojump = false
+		
+		if params ~= nil then
+			component.countdown = params.delay or 0
+			if params.triggermarker then
+				component.triggermarker = Marker_FromName(params.triggermarker, "")
+			end
+			if params.jumpfrom then
+				component.jumpfrom = Marker_FromName(params.jumpfrom, "")
+				component.needtojump = true
+			end
+			if params.jumpto then
+				component.jumpto = Marker_FromName(params.jumpto, "")
+			end
+			component.destroyfx = params.destroyfx or false
+			component.egrouptobust = params.egrouptobust or false
+		end
+		
+	end
+	
+	return false
+end
+
+
+function Ai.Traits.Bustout.Idle.Update(component, data, params)
+	-- If you haven't busted out yet, do the following:
+	-- If trigger hasn't been fired, await trigger.
+	-- If trigger has fired, await delay.
+	-- If delay is up, bust out and enter combat.
+	
+	if not component.bustedout then					-- If you haven't busted out yet, do the following:
+		component.bustouttime = World_GetGameTime()
+		if not component.triggered then				-- If trigger hasn't been fired, await trigger.
+			local sg_TriggeringSquads = SGroup_CreateIfNotFound("sg_TriggeringSquads")
+			
+			if params ~= nil and params.triggermarker ~= nil then
+				Team_GetAllSquadsNearMarker(HUMANS, sg_TriggeringSquads, component.triggermarker)
+			else
+				Team_GetAllSquadsNearMarker(HUMANS, sg_TriggeringSquads, component.startingPosition, 15)
+			end
+			
+			if not SGroup_IsEmpty(sg_TriggeringSquads) then
+				component.triggered = true
+			end
+		elseif component.countdown > 0 then			-- If trigger has fired, await delay.
+			component.countdown = component.countdown - 1
+		else									-- If delay is up, bust out and enter combat.			
+			--if component.egrouptobust then				
+			if component.egrouptobust ~= nil and scartype(component.egrouptobust) == ST_STRING and component.egrouptobust ~= "" and EGroup_IsEmpty(EGroup_FromName(component.egrouptobust)) == false then
+				if component.destroyfx then
+					ModMisc_TriggerDcaAction(component.destroyfx, 0.0, EGroup_GetPosition(EGroup_FromName(component.egrouptobust)), ScarGameBackend.GetMainOpponentPlayer())			
+					ModMisc_TriggerDcaAction("abilities\\generic_camera_shake", 1, EGroup_GetPosition(EGroup_FromName(component.egrouptobust)), ScarGameBackend.GetMainOpponentPlayer())
+				end
+				EGroup_Kill(EGroup_FromName(component.egrouptobust))
+			end
+			
+
+			component.bustedout = true
+			
+			component.StateMachine:GotoState( "Combat", component )	
+		end
+	elseif (component.bustedout) and Prox_AreSquadsNearMarker(component.sgroup, component.markerPosition, ANY, 5) then -- (Prox_MarkerSGroup(component.markerPosition, component.sgroup, PROX_SHORTEST) < 5) then
+		if component.egrouptobust ~= nil and scartype(component.egrouptobust) == ST_STRING and component.egrouptobust ~= "" and EGroup_IsEmpty(EGroup_FromName(component.egrouptobust)) == false then
+		
+			EGroup_Kill(EGroup_FromName(component.egrouptobust))
+		
+		end	
+		
+			component.attacking = false
+			component.StateMachine:GotoState( "Combat", component )
+		
+	end
+	
+	return false
+end
+
+function Ai.Traits.Bustout.Combat.OnEnter(component, data, params)
+	-- Postpone attacking by one second
+
+	if component.spawned == false then	--ensure special attack logic only applies on the first attack cycle- spawning, warping, etc.
+		component.attacking = false
+		
+		SGroup_ReSpawn( component.sgroup )
+		SGroup_WarpToPos( component.sgroup, component.startingPosition )
+		component.spawned = true
+	end
+	
+	return false
+end
+
+function Ai.Traits.Bustout.Combat.Update(component, data, params)
+	
+	if component.needtojump then
+	-- Need to jump.  Priority is to get to jumpfrom marker.
+		
+		if Marker_InProximity(  component.jumpfrom,  SGroup_GetPosition( component.sgroup ) ) then
+		-- We're within the launch marker.  Jump, and don't think about jumping again.
+			component.needtojump = false
+			
+			Cmd_JumpToPosition( component.sgroup, component.jumpto )
+		elseif SGroup_IsMoving( component.sgroup, false ) == false then
+		-- We're not moving.  Get moving towards the launch.
+			Cmd_Move( component.sgroup, component.jumpto )
+		end
+	
+	elseif (not component.attacking) and (params ~= nil) then
+	-- Charge the trigger, if it exists.
+		if params.triggermarker ~= nil then
+			Cmd_AttackMove(component.sgroup, Marker_GetPosition(Marker_FromName(params.triggermarker, "")))
+		end
+		
+		component.attacking = true
+	end
+	
+	
+	return false
+end
+
+
+
+-------------------------------------------------------------------------
+-- Garrisoned
+--
+-- Units will garrison a nearby structure (if one can be found) at the
+-- start of the mission
+
+function Ai.Traits.Garrisoned.Idle.OnEnter(component, data)
+	if SGroup_CountDeSpawned(component.sgroup) ~= 0 then
+		return false
+	end
+	AIPrint( component.StateMachine:GetTimeActive(),  "Get in building" )
+	local squad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+	local raceName = Squad_GetPlayerOwner(squad)
+	local race = Player_GetRace(raceName)
+	
+	if race == "tyranids" then
+		return false
+	else
+		Util_GarrisonNearbyBuilding(component.sgroup, SGroup_GetPosition(component.sgroup), 20, true)
+	end
+	return false
+end
+
+function Ai.Traits.Garrisoned.Combat.OnEnter(component, data)
+	local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+				
+--~ 	print("GARRISONED ATTEMPTED BY "..race)
+	
+--~ 	if race == "tyranids" then
+--~ 		return false
+--~ 	else
+--~ 		print("Play Garrison Speech - GARRISONED")
+--~ 		Actor_PlaySpeechWithoutPortrait(ACTOR.Tarkus, _GetRandomSpeech())
+--~ 	end
+end
+-------------------------------------------------------------------------
+-- Wander
+--
+-- Units will wander around randomly close to their spawn
+
+function Ai.Traits.Wander.Idle.OnEnter(component, data)
+	data.currentPosition = SGroup_GetPosition(component.sgroup)
+	data.countDown = PC_Rand(1, 5)
+--~ 	Modify_UnitSpeed(component.sgroup, 0.5)
+	return false
+end
+
+function Ai.Traits.Wander.Idle.Update(component, data, params)
+	data.countDown = data.countDown - 1
+	local minDist = 5
+	local maxDist = 8
+	if (params ~= nil) then
+		if params.minDistance ~= nil then minDist = params.minDistance end
+		if params.maxDistance ~= nil then maxDist = params.maxDistance end
+	end
+	if( data.countDown <= 0 ) then
+		data.countDown = PC_Rand(10, 15)
+		data.distance = PC_Rand(minDist, maxDist)
+--~ 		print("WANDER: Distance is " .. data.distance)
+		local wanderPosition = Marker_GetRandomPosition(data.currentPosition, data.distance)
+		
+		Cmd_AttackMovePos(component.sgroup, wanderPosition)
+		return true
+
+	end
+
+	return false
+end
+
+-------------------------------------------------------------------------
+-- Mobile
+--
+-- Units will move around randomly during combat.
+
+function Ai.Traits.Mobile.Combat.OnEnter(component, data)
+	data.currentPosition = SGroup_GetPosition(component.sgroup)
+	data.countDown = PC_Rand(1, 2)
+--~ 	Modify_UnitSpeed(component.sgroup, 0.5)
+	return false
+end
+
+function Ai.Traits.Mobile.Combat.Update(component, data)
+	data.countDown = data.countDown - 1
+	if( data.countDown <= 0 ) then
+		local sg_MobileLastAttacker = SGroup_CreateIfNotFound("sg_MobileLastAttacker")
+		SGroup_GetLastAttacker( component.sgroup, sg_MobileLastAttacker )
+		if not SGroup_IsEmpty( sg_MobileLastAttacker ) then
+		
+			local MobileAttackerPosition = SGroup_GetPosition( sg_MobileLastAttacker )
+			
+			local MobileTargetPosition = Position_GetRandomPosition( MobileAttackerPosition, 25 )
+			
+			Cmd_MoveToPos(component.sgroup, MobileTargetPosition)
+		end
+		
+		data.countDown = PC_Rand(10, 12)
+		return true
+
+	end
+
+	return false
+end
+
+-------------------------------------------------------------------------
+-- Anti-Armor
+--
+-- Units will specifically target Thule if he is within range.
+
+-- TODO: This trait makes dangerous assumptions about sg_hero6.  It should check for armor types, not specific groups.
+-- TODO: This trait will only hunt down Thule.  It should also target turrets and other armor.
+-- TODO: This trait will override Tarkus's "Taunt" ability.  It should not.
+
+function Ai.Traits.AntiArmor.Combat.Update(component, data)
+
+	-- The player's walker is always sg_hero6.
+	
+	local walkerSquad = SGroup_GetNonKnockedOutSquad(sg_hero6)
+	
+	-- Thule even on the field and alive?
+	if not (walkerSquad == nil) then
+	
+		local aaSquad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+		local sg_aaSquadTargetGroup = SGroup_Create("")
+		Squad_GetAttackTargets(aaSquad, sg_aaSquadTargetGroup)
+		
+		--In a fight yet?
+		if (not SGroup_IsEmpty(sg_aaSquadTargetGroup) and (SGroup_CountSpawned(sg_aaSquadTargetGroup) > 0)) then
+			--*************
+			-- DEBUG INFO FOR FATAL 
+--~ 			print("--- Begin AA debug")
+--~ 			print("--> count = ", SGroup_Count(sg_aaSquadTargetGroup))
+--~ 			print("->> count spawned = ", SGroup_CountSpawned(sg_aaSquadTargetGroup))
+--~ 			print(">>> count despawned = ", SGroup_CountDeSpawned(sg_aaSquadTargetGroup))
+--~ 			print("--- END AA debug")
+			-- Probs have to use Util_IsValid to validate squad
+			local aaSquadTarget = SGroup_GetSpawnedSquadAt(sg_aaSquadTargetGroup, 1)
+			local aaTargetEntity = Squad_GetBlueprintName(aaSquadTarget)
+			local walkerEntity = Squad_GetBlueprintName(walkerSquad)
+			
+--~ 			print("AA SQUAD IS TARGETING: "..aaTargetEntity)
+--~ 			print("THULE IS A: "..walkerEntity)
+			
+			--Thule already being targeted?
+			if not (walkerSquad == aaSquadTarget) then
+				
+				--Thule in range?  Feh, let's say range is 40 meters.
+				local aaRange = Prox_SGroupSGroup(component.sgroup, sg_hero6, PROX_CENTER)
+				
+				if (aaRange < 40) then
+				
+					-- Thule's alive and close!  Kill him.
+					Cmd_AttackSGroup(component.sgroup, sg_hero6)
+				end
+			end
+		end
+		
+		
+	end
+
+end
+
+-------------------------------------------------------------------------
+-- AV = Anti-Vehicle
+-- Units will specifically target player vehicles if they are in range
+-- If player has a vehicle, and vehicle is near enemy, attack vehicle
+
+function Ai.Traits.AV.Combat.Update(component, data)
+	local hostPlayer = ScarGameBackend.GetHostPlayer()
+	local sg_AV_targetSquad = SGroup_CreateIfNotFound("sg_AV_targetSquad")
+	local sg_AV_player1Squads = SGroup_CreateIfNotFound("sg_AV_player1Squads")
+	local sg_AV_player2Squads = SGroup_CreateIfNotFound("sg_AV_player2Squads")
+	Player_GetAll(hostPlayer, sg_AV_player1Squads)
+	
+	-- Scan the player's squads to see if any of them is of type "vehicle"
+	local vehicleCheck = function(groupid, itemindex, itemid)
+		if Entity_IsOfType(Squad_EntityAt(itemid,0), "vehicle") then
+			SGroup_Clear(sg_AV_targetSquad)
+			SGroup_Add(sg_AV_targetSquad, itemid)
+			if not SGroup_IsEmpty(sg_AV_targetSquad) and not SGroup_IsEmpty(component.sgroup) then
+				local aaRange = World_DistancePointToPoint(SGroup_GetPosition(component.sgroup), SGroup_GetPosition(sg_AV_targetSquad))     --Prox_SGroupSGroup(component.sgroup, sg_AV_targetSquad, PROX_SHORTEST)Prox_SGroupSGroup(component.sgroup, sg_AV_targetSquad, PROX_SHORTEST)
+				if (aaRange < 40) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+	
+	if not SGroup_IsEmpty(sg_AV_player1Squads) and (SGroup_CountSpawned(sg_AV_player1Squads) > 0) then
+		SGroup_ForEach(sg_AV_player1Squads, vehicleCheck)
+	end
+	
+	if Game_IsCoop() then
+		Player_GetAll(Player_FromId(1001), sg_AV_player2Squads)
+		if not SGroup_IsEmpty(sg_AV_player2Squads) and (SGroup_CountSpawned(sg_AV_player2Squads) > 0) then
+			SGroup_ForEach(sg_AV_player2Squads, vehicleCheck)
+		end
+	end
+
+	-- If a vehicle is found and is nearby, attack it
+	if (not SGroup_IsEmpty(sg_AV_targetSquad) and (SGroup_CountSpawned(sg_AV_targetSquad) > 0)) then
+
+		if SGroup_CanSeeSGroup(component.sgroup, sg_AV_targetSquad, ANY) then
+			
+			Cmd_AttackSGroup(component.sgroup, sg_AV_targetSquad)
+
+		end
+	end
+	
+end
+
+-------------------------------------------------------------------------
+-- Anti-Avitus
+--
+-- Units will specifically target Avitus if he is within range. Melee enemies should go after him.
+
+function Ai.Traits.AntiAvitus.Combat.Update(component, data)
+	local playerSquads = SGroup_FromName("sg_allheroes")
+	if SGroup_ContainsSGroup(playerSquads, SGroup_FromName("actorgroup_avitus"), false) and SGroup_CountDeSpawned(component.sgroup) == 0 then
+		local avitusSquad = SGroup_GetNonKnockedOutSquad(SGroup_FromName("actorgroup_avitus"))
+		local aaSquad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+		local sg_aaSquadTargetGroup = SGroup_CreateIfNotFound("sg_aaSquadTargetGroup")
+		Squad_GetAttackTargets(aaSquad, sg_aaSquadTargetGroup)
+		
+		--In a fight yet?
+		if not SGroup_IsEmpty(sg_aaSquadTargetGroup) then
+		
+			local aaSquadTarget = SGroup_GetSpawnedSquadAt(sg_aaSquadTargetGroup, 1)
+			local aaTargetEntity = Squad_GetBlueprintName(aaSquadTarget)
+--~ 			local avitusEntity = Squad_GetBlueprintName(avitusSquad)
+			
+			--Avitus already being targeted?
+			if not (avitusSquad == aaSquadTarget) then
+				
+				--Avitus in range?  Feh, let's say range is 40 meters.
+				local aaRange = Prox_SGroupSGroup(component.sgroup, "actorgroup_avitus", PROX_CENTER)
+				
+				if (aaRange < 25) then
+				
+					-- Avitus is alive and close!  Kill him.
+					Cmd_AttackSGroup(component.sgroup, "actorgroup_avitus")
+				end
+			end
+		end
+	end
+
+end
+	
+
+-------------------------------------------------------------------------
+-- RandomPatrol
+--
+-- Units will randomly patrol the map
+
+function Ai.Traits.RandomPatrol.Idle.OnEnter(component, data)
+	data.countDown = PC_Rand(1, 5)
+	return false
+end
+
+function Ai.Traits.RandomPatrol.Idle.Update(component, data)
+	data.currentPosition = SGroup_GetPosition(component.sgroup)
+	data.countDown = data.countDown - 1
+	if( data.countDown <= 0 ) then
+		data.countDown = PC_Rand(50, 60)
+		data.distance = PC_Rand(80, 90)
+		local wanderPosition = Marker_GetRandomPosition(data.currentPosition, data.distance)
+		
+		Cmd_AttackMovePos(component.sgroup, wanderPosition)
+		return true
+
+	end
+	
+	
+
+	return false
+end
+
+-------------------------------------------------------------------------
+-- Cover
+--
+-- Units will attempt to find and utilize cover
+
+function Ai.Traits.Cover.Idle.OnEnter(component, data, params)
+	local radius = 25
+	data.countDown = PC_Rand(1, 5)
+	if (params ~= nil) then
+		if params.searchRadius ~= nil then
+			radius = params.searchRadius
+		end
+	end
+	if(SGroup_IsInCover(component.sgroup, ALL) == false) then
+        Cmd_MoveToCover(component.sgroup, SGroup_GetPosition(component.sgroup), radius)
+    end
+	-- this needs to let the remaining traits process the on enter
+	return false
+end
+
+function Ai.Traits.Cover.Combat.OnEnter(component, data, params)
+	local radius = 25
+	data.countDown = PC_Rand(1, 5)
+	if (params ~= nil) then
+		if params.searchRadius ~= nil then
+			radius = params.searchRadius
+		end
+	end
+	if(SGroup_IsInCover(component.sgroup, ALL) == false) then
+        Cmd_MoveToCover(component.sgroup, SGroup_GetPosition(component.sgroup), radius)
+    end
+	-- this needs to let the remaining traits process the on enter
+	return false
+end
+
+function Ai.Traits.Cover.Combat.Update(component, data, params)
+	if (params ~= nil) then
+		if params.update == true then
+			data.countDown = data.countDown - 1
+			if data.countDown <= 0 then 
+				data.countDown = PC_Rand(8,12) 
+				local radius = 25
+				if params.searchRadius ~= nil then
+					radius = params.searchRadius
+				end
+				if(SGroup_IsInCover(component.sgroup, ALL) == false) then
+					Cmd_MoveToCover(component.sgroup, SGroup_GetPosition(component.sgroup), radius)
+				end
+			end
+			-- this needs to let the remaining traits process the on enter
+		end
+	end
+	return false
+end
+
+-------------------------------------------------------------------------
+-- Cowardly
+--
+-- Squads will retreat once cut down to a certain random percentage of their starting squad-size.
+
+function Ai.Traits.Cowardly.Combat.OnEnter(component, data)
+	if (data.retreatThreshhold == nil) then
+		data.retreatThreshhold = ((World_GetRand(0, 35)) / 100)	-- A decimal between 0.0 and 0.30.
+	end
+
+
+	return false
+end
+
+
+function Ai.Traits.Cowardly.Combat.Update(component, data)
+	if (not SGroup_IsRetreating(component.sgroup, false)) and (SGroup_GetAvgLoadout(component.sgroup) < data.retreatThreshhold) then
+		-- Survivors remaining below threshhold.  Retreat!
+		
+		local squad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+		local raceName = Squad_GetPlayerOwner(squad)
+		local race = Player_GetRace(raceName)
+		local raceString = Player_GetRaceName(raceName)
+		
+		if (raceString == "tyranids") then
+			-- 'Nids don't retreat due to reduced squads; they are forced to retreat by Synapse effects.
+			return false
+		end
+		
+		local retreatMarker = nil
+		local retreatRange = 10000 --Unreasonable number
+		
+		local retreatIterator = 1
+		
+		while Marker_Exists("mkr_RetreatMarker"..retreatIterator, "") do
+			local tempRetreatMarker = Marker_FromName("mkr_RetreatMarker"..retreatIterator, "")
+			local tempRetreatRange = Prox_MarkerSGroup(tempRetreatMarker, component.sgroup, PROX_SHORTEST)
+			if (tempRetreatRange < retreatRange) then
+				retreatRange = tempRetreatRange
+				retreatMarker = tempRetreatMarker
+			end
+			retreatIterator = retreatIterator + 1
+		end
+		
+		-- retreatMarker now contains the nearest valid retreat marker, or else "nil" if no such marker exists. 
+		
+		if not (retreatMarker == nil) then
+			pos_RetreatPosition = Marker_GetPosition(retreatMarker)
+			
+			-- Don't delete enemy when they reach the marker.
+			Cmd_Retreat(component.sgroup, pos_RetreatPosition)
+			
+			
+			data.retreatThreshhold = 0	-- If they survive the retreat, they will never retreat again.
+			
+			if (raceString == "orks") then
+--~ 				print("ORKS SQUAD RETREATING")
+				Actor_PlaySpeechWithoutPortrait(ACTOR.Gorgutz, _OrkGetRandomRetreatSpeech())
+			end
+
+			return true
+		end
+		
+    end
+
+	if (SGroup_IsRetreating(component.sgroup, false)) then
+		
+		if not (Team_CanSeeSGroup(HUMANS , component.sgroup, false)) then
+			SGroup_DestroyAllSquads(component.sgroup)	-- Eliminate the retreating squad once they're offscreen.
+		end
+
+		return true
+	end
+	
+	return false
+end
+
+-------------------------------------------------------------------------
+-- GetHelp
+--
+-- Units will fall back after a certain period of time to try to find
+-- units with a Helpful trait, then bring them back to the fight
+
+function Ai.Traits.GetHelp.OnEvent.ReinforcementsInbound(component, event)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "GetHelp.OnEvent.ReinforcementsInbound", component)
+    
+    local data = component.StateMachine:GetData( "GetHelp", "Helping" )
+    data.target = component.startingPosition
+    
+    local combatData = component.StateMachine:GetData( "GetHelp", "Combat" )
+    combatData.Helped = true
+    
+    component.StateMachine:GotoState( "Return", component )
+    
+	return true
+end
+
+function Ai.Traits.GetHelp.Return.OnEnter(component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "Time to Return", component)
+    
+    local target = data.target or component.startingPosition
+    FOW_RevealSGroupOnly(component.sgroup, 10)
+    Cmd_AttackMovePos(component.sgroup, target)
+    return true
+end
+
+function Ai.Traits.GetHelp.Return.Update(component, data)   
+    if(SGroup_IsUnderAttack(component.sgroup, ANY, 10) or SGroup_IsDoingAttack(component.sgroup, ANY, 10))then
+        component.StateMachine:GotoState( "Combat", component )
+        return true
+	end
+end
+
+function Ai.Traits.GetHelp.Combat.OnEnter(component, data)
+	AIPrint( component.StateMachine:GetTimeActive(), "GetHelp.Combat.OnEnter", component)
+	data.countDown = 15
+	return false
+end
+
+function Ai.Traits.GetHelp.Combat.Update(component, data)
+	data.countDown = data.countDown - 1
+	if( data.countDown <= 0 and not data.Helped) then
+		return component.StateMachine:GotoState( "Retreat", component )
+	else
+		return false
+	end
+end
+
+function Ai.Traits.GetHelp.Retreat.OnEnter(component, data)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "GetHelp.Retreat.OnEnter", component)
+	data.countDown = 35
+	
+	data.retreatFrom = SGroup_GetPosition( component.sgroup )
+	
+	RetreatFromAttacker(component)
+	
+	SendHelpMeEvent(component, data.retreatFrom)
+	
+	return false
+end
+
+function Ai.Traits.GetHelp.Retreat.Update(component, data)
+
+	SendHelpMeEvent(component, data.retreatFrom)
+	
+	if( data.countDown <= 0 ) then
+		local event = { id = Ai.Events.EnemySpotted, pos = data.retreatFrom, sender = component }
+		return component.StateMachine:OnEvent( component, event )
+
+	else
+		data.countDown = data.countDown - 1
+		return false
+	end
+end
+
+-------------------------------------------------------------------------
+-- SentryAlert
+--
+-- Units will fall back immediately upon being engaged by the enemy
+
+function Ai.Traits.SentryAlert.OnEvent.ReinforcementsInbound(component, event)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "GetHelp.OnEvent.ReinforcementsInbound", component)
+    
+    local data = component.StateMachine:GetData( "GetHelp", "Helping" )
+    data.target = component.startingPosition
+    
+    local combatData = component.StateMachine:GetData( "GetHelp", "Combat" )
+    combatData.Helped = true
+    
+    component.StateMachine:GotoState( "Return", component )
+    
+	return true
+end
+
+function Ai.Traits.SentryAlert.Return.OnEnter(component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "Time to Return", component)
+    
+    local target = data.target or component.startingPosition
+    FOW_RevealSGroupOnly(component.sgroup, 10)
+    Cmd_AttackMovePos(component.sgroup, target)
+    return true
+end
+
+function Ai.Traits.SentryAlert.Return.Update(component, data)   
+    if(SGroup_IsUnderAttack(component.sgroup, ANY, 10) or SGroup_IsDoingAttack(component.sgroup, ANY, 10))then
+        component.StateMachine:GotoState( "Combat", component )
+        return true
+	end
+end
+
+function Ai.Traits.SentryAlert.Combat.OnEnter(component, data)
+	AIPrint( component.StateMachine:GetTimeActive(), "GetHelp.Combat.OnEnter", component)
+	data.countDown = 1
+	return false
+end
+
+function Ai.Traits.SentryAlert.Combat.Update(component, data)
+	data.countDown = data.countDown - 1
+	if( data.countDown <= 0 and not data.Helped) then
+		return component.StateMachine:GotoState( "Retreat", component )
+	else
+		return false
+	end
+end
+
+function Ai.Traits.SentryAlert.Retreat.OnEnter(component, data)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "GetHelp.Retreat.OnEnter", component)
+	data.countDown = 25
+	
+	data.retreatFrom = SGroup_GetPosition( component.sgroup )
+	
+	RetreatFromAttacker(component)
+	
+	SendHelpMeEvent(component, data.retreatFrom)
+	
+	return false
+end
+
+function Ai.Traits.SentryAlert.Retreat.Update(component, data)
+
+	SendHelpMeEvent(component, data.retreatFrom)
+	
+	if( data.countDown == 0 ) then
+		local event = { id = Ai.Events.EnemySpotted, pos = data.retreatFrom, sender = component }
+		return component.StateMachine:OnEvent( component, event )
+
+	else
+		data.countDown = data.countDown - 1
+		return false
+	end
+end
+
+-------------------------------------------------------------------------
+-- Helpful
+--
+-- Units will come to the aid of other encounters if they are found by
+-- units with the 'Get Help' trait
+
+function Ai.Traits.Helpful.OnEvent.CallForHelp(component, event)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "Helpful.OnEvent.CallForHelp", component)
+	
+	if( not CanHelp( component, event.sender ) ) then
+		AIPrint( component.StateMachine:GetTimeActive(),  "Can't Help" )
+		return false
+	end
+	
+	local pos = nil
+	
+	if( event.enemyPos ~= nil ) then
+		pos = event.enemyPos
+	elseif( event.pos ~= nil ) then
+		pos = event.pos
+	elseif( event.sender ~= nil ) then
+		pos = SGroup_GetPosition( event.sender.sgroup )
+	end
+	
+	if( pos ~= nil ) then
+		local confirmEvent = { id = Ai.Events.ReinforcementsInbound, pos = pos, sender = component }
+		event.sender.StateMachine:OnEvent( event.sender, confirmEvent )
+        
+        local data = component.StateMachine:GetData( "Helpful", "Helping" )
+        data.target = pos
+        
+        component.StateMachine:GotoState( "Helping", component )
+		return true
+	else
+		return false
+	end
+end
+
+function CanHelp(component, needsHelp)
+
+	if( component.StateMachine:GetState() == "Combat" ) then
+		return false
+	end
+	
+	if( component.StateMachine:GetState() == "Retreat" ) then
+		return false
+	end
+	
+	if( component == needsHelp ) then
+		return false
+	end
+
+	return true
+end
+
+function Ai.Traits.Helpful.Helping.OnEnter(component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "Going to help", component)
+    
+    local target = data.target or component.startingPosition
+    --FOW_RevealSGroupOnly(component.sgroup, 10)
+    Cmd_AttackMovePos(component.sgroup, target)
+end
+
+-------------------------------------------------------------------------
+-- Call Reinforcements
+--
+-- Units will attempt to call in a 'reinforcement' unit
+
+function Ai.Traits.CallReinforcements.Combat.OnEnter(component, data)
+	
+    if ( data.reinforcementCalled == nil ) then
+		AIPrint( component.StateMachine:GetTimeActive(),  "Attempting to call in reinforcements" )
+		data.countDown = 15
+		data.reinforcementCalled = true
+		data.reinforcementArrived = false
+		data.spawnPoint = Position_GetRandomPosition( SGroup_GetPosition(component.sgroup), 15)
+		Ceasefire_AddSGroup( component.sgroup )
+	end
+
+end
+
+function Ai.Traits.CallReinforcements.Combat.Update(component, data)
+	if ( data.countDown > 0 and not SGroup_IsEmpty( component.sgroup) ) then
+		data.countDown = data.countDown - 1
+		ModMisc_TriggerDcaAction("ui\\abilities\\radio_beacon", 8, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(2))
+	elseif( data.countDown <= 0 and data.reinforcementArrived == false ) then
+		-- HACK: Testing the function out, we'll want to eventually have a 'Reinforcements' encounter that's called here
+		data.reinforcementArrived = true
+		sgReinforcement = SGroup_CreateIfNotFound("sgReinforcement")
+		SGroup_Clear(sgReinforcement)
+		Util_CreateSquadsAtMarker( ScarGameBackend.GetMainOpponentPlayer(), sgReinforcement, sbps_camp_npc_sm_tactical_marine, data.spawnPoint, 1)
+		Ceasefire_RemoveSGroup( component.sgroup )
+		return false
+	else
+		return false
+	end
+end
+
+-------------------------------------------------------------------------
+-- Grenadier
+--
+-- Units will attempt to throw grenades into player squads in cover
+-- Parameter available is "ability", which is the ability blueprint from AutoBlueprints.scar
+
+function Ai.Traits.Grenadier.Combat.OnEnter(component, data, params)
+	local initialToss = PC_Rand( 2, 4 )
+	data.countDown = initialToss
+end
+
+function Ai.Traits.Grenadier.Combat.Update(component, data, params)
+
+	data.countDown = data.countDown - 1
+	local ability = 0
+	if (params ~= nil) then
+		ability = params.ability
+	end
+	
+	if data.countDown <= 0 then
+		data.countDown = 15
+		data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+		SGroup_Clear(data.attackers)
+		SGroup_GetLastAttacker( component.sgroup, data.attackers )
+		if not (SGroup_IsUnconscious(data.attackers, ALL)) and ((SGroup_IsInCover(data.attackers, ANY) == true) or (SGroup_IsInHoldEntity(data.attackers, ANY))) then
+			if (Prox_SGroupSGroup(data.attackers, component.sgroup, PROX_CENTER) < 35) then
+			-- DETECT RACE, THROW RACE-APPROPRIATE GRENADE
+				local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+				if (race == "chaos_marines") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_csm_blight_grenade end
+						Cmd_SquadAbilitySquad(component.sgroup, ability , data.attackers, true)
+					else
+						if ability == 0 then ability = abil_camp_csm_all_frag_grenade_npc end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					end
+				end
+				if (race == "orks") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_ork_stikkbomb end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					else
+						if ability == 0 then ability = abil_camp_ork_damage_aoe_stikkbomb_npc end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					end
+				end
+				if (race == "eldar") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_eld_plasma_grenade end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					else
+						if ability == 0 then ability = abil_camp_eld_damage_aoe_grenade_npc end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					end
+				end
+				if (race == "space_marines") then
+					if SGroup_Exists("sg_eliteApoth") and SGroup_Compare(component.sgroup,"sg_eliteApoth") then
+						if not Game_IsLetterboxed() then
+							Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_sm_toxin_grenade_apothecary, data.attackers, true)
+						end
+					end
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_sm_frag_grenade end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					else
+						if ability == 0 then ability = abil_camp_sm_damage_aoe_grenade_npc end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					end
+				end
+				if (race == "imperial_guard") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_sm_frag_grenade end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					else
+						if ability == 0 then ability = abil_camp_ig_acc_damage_aoe_frag_grenade_npc end
+						Cmd_SquadAbilitySquad(component.sgroup, ability, data.attackers, true)
+					end
+				end
+			end
+		else
+			return false
+		end
+	end
+end
+
+
+-------------------------------------------------------------------------
+-- Artillery
+--
+-- Units use indirect fire abilities at long range against the player.
+-- Parameter available is "ability", which is the ability blueprint from AutoBlueprints.scar
+
+function Ai.Traits.Artillery.Idle.OnEnter(component, data, params)
+	-- First barrage will fire as soon as player is within range.
+	if data.countDown == nil then
+		data.countDown = 0
+	end
+end
+
+function Ai.Traits.Artillery.Idle.Update(component, data, params)
+
+	local ability = 0
+	if (params ~= nil) then
+		ability = params.ability
+	end
+	
+	--Countdown at 0 yet?  If so, look for a target within 50 meters.
+	if data.countDown <= 0 then
+	
+		local sg = SGroup_CreateIfNotFound("tempArtilleryTargetSG")
+		SGroup_Clear(sg)
+		World_GetSquadsNearPoint( Campaign.GetMainOpponent(), sg, SGroup_GetPosition(component.sgroup), 55, OT_Enemy)
+    
+		--Found a target within 50 meters?  Make sure they're conscious, then bombs away!
+		if(Prox_AreTeamsNearMarker(HUMANS, SGroup_GetPosition(component.sgroup), ANY, 55))then   
+			local squad = SGroup_GetNonKnockedOutSquad(sg)
+			if(SGroup_Count(sg) > 0 and squad ~= nil and (not Squad_IsInfiltrated(squad)))then
+				local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+				
+--~ 				print("ARTILLERY FIRED BY "..race)
+				
+				if (race == "orks") then
+					if ability == 0 then ability = abil_camp_ork_tankbustas_damage_aoe_mortar end
+					Cmd_SquadAbilityPos(component.sgroup, ability, Squad_GetPosition(squad), true)
+				end
+				if (race == "eldar") then
+					if ability == 0 then ability = abil_camp_eld_dcannon_damage_aoe_normalshot end
+					Cmd_SquadAbilityPos(component.sgroup, ability, Squad_GetPosition(squad), true)
+				end
+				if (race == "tyranids") then
+						-- 'Nids now use Hive Nodes for artillery.  No command is needed.
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_tyr_warp_artillery, Squad_GetPosition(squad), true)
+				end
+					
+				data.countDown = 10
+				return true
+			end        
+		else
+			return false
+		end
+	else
+		data.countDown = data.countDown - 1
+	end
+	
+	return false
+	
+end
+
+function Ai.Traits.Artillery.Combat.OnEnter(component, data, params)
+	-- First barrage will fire as soon as player is within range.
+	if data.countDown == nil then
+		data.countDown = 0
+	end
+end
+
+function Ai.Traits.Artillery.Combat.Update(component, data, params)
+
+	local ability = 0
+	if (params ~= nil) then
+		ability = params.ability
+	end
+	
+	--Countdown at 0 yet?  If so, look for a target within 50 meters.
+	if data.countDown <= 0 then
+	
+		local sg = SGroup_CreateIfNotFound("tempArtilleryTargetSG")
+		SGroup_Clear(sg)
+		World_GetSquadsNearPoint( Campaign.GetMainOpponent(), sg, SGroup_GetPosition(component.sgroup), 55, OT_Enemy)
+    
+		--Found a target within 50 meters?  Make sure they're conscious, then bombs away!
+		if(Prox_AreTeamsNearMarker(HUMANS, SGroup_GetPosition(component.sgroup), ANY, 55))then   
+			local squad = SGroup_GetNonKnockedOutSquad(sg)
+			if(SGroup_Count(sg) > 0 and squad ~= nil and (not Squad_IsInfiltrated(squad)))then
+				local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+				
+--~ 				print("ARTILLERY FIRED BY "..race)
+				
+				if (race == "orks") then
+					if ability == 0 then ability = abil_camp_ork_tankbustas_damage_aoe_mortar end
+					Cmd_SquadAbilityPos(component.sgroup, ability, Squad_GetPosition(squad), true)
+				end
+				if (race == "eldar") then
+					if ability == 0 then ability = abil_camp_eld_dcannon_damage_aoe_normalshot end
+					Cmd_SquadAbilityPos(component.sgroup, ability, Squad_GetPosition(squad), true)
+				end
+				if (race == "tyranids") then
+						-- 'Nids now use Hive Nodes for artillery.  No command is needed.
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_tyr_warp_artillery, Squad_GetPosition(squad), true)
+				end
+					
+				data.countDown = 10
+				return true
+			end        
+		else
+			return false
+		end
+	else
+		data.countDown = data.countDown - 1
+	end
+	
+	return false
+	
+end
+
+-------------------------------------------------------------------------
+-- Ambush
+--
+-- Units enter stealth upon spawn, leap out and attack player when he gets close.
+--
+-- NEW MODIFICATIONS!
+-- Can now take Parameters, allowing it to use player-chosen abilities and ambush when player touches a marker other than his own.
+-- 
+-- PARAMETERS:
+-- 		triggermarker = string name of marker that will cause Ambusher to uncloak and attack IN ADDITION to anybody getting right next to him.
+--		stealth = Type of stealth action to use.  (i.e. Lictors and Raveners use different methods).  Defaults to component.infiltration.
+--		ability = Ability to use on target after uncloaking.  Defaults to tabled abilities defined in functions (very messy).
+--		targettype = String containing target type of ability.  Valid options are "position" and "squad".  Defaults to "position".
+--		delay = # of seconds after trigger is touched that ambush begins.  Defaults to 0.  Use to stagger multi-critter ambushes.
+
+function Ai.Traits.Ambush.Idle.OnEnter(component, data, params)
+
+	-- Go into stealth immediately.
+	if data.countDown == nil then
+		data.countDown = 0
+	end
+
+	if params ~= nil and params.delay ~= nil then
+		data.delay = params.delay
+	else
+		data.delay = 0
+	end
+	
+	-- If a specific stealth action was passed in, use it.
+--~ 	if params ~= nil and params.stealth ~= nil then
+--~ 		component.infiltration = params.stealth
+--~ 	end
+
+	if(not SGroup_IsInfiltrated(component.sgroup, true))then
+		if params ~= nil and params.stealth ~= nil then
+			Cmd_SquadAbility(component.sgroup, params.stealth, true)
+		elseif (component.infiltration ~= nil) then
+			Cmd_SquadAbility(component.sgroup, component.infiltration, true)
+		else -- This else should be removed altogether, but is left here to accomodate for unknown references
+			print("WARNING!!!")
+			print("INFILTRATION ability not specified, using default based on main enemy race")
+			local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+			if (race == "orks") then
+				Cmd_SquadAbility(component.sgroup, abil_camp_ork_kommandos_buff_self_infiltration, true)
+			elseif (race == "eldar") then
+				Cmd_SquadAbility(component.sgroup, abil_camp_eld_ranger_buff_self_infiltrate, true)
+			elseif (race == "tyranids") then
+				Cmd_SquadAbility(component.sgroup, abil_camp_tyr_ravener_buff_self_burrow, true)
+			elseif (race == "space_marines") then
+				Cmd_SquadAbility(component.sgroup, abil_camp_sm_scout_buff_self_infiltrate, true)
+			end
+		end
+	end
+	
+end
+
+function Ai.Traits.Ambush.Idle.Update(component, data, params)
+	--Anybody close enough to attack?
+	
+	local ability = 0
+	if (params ~= nil) then
+		ability = params.ability
+	end
+	
+	local sg = SGroup_CreateIfNotFound("sgAmbushTarget")
+	SGroup_Clear(sg)
+	
+	local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+	local ambushRange = 13
+	local temp_player = Campaign.GetMainOpponent()
+	
+	if (race == "tyranids") then
+		ambushRange = 7
+	end
+	
+	if (component.playerOwner ~= nil) then
+		temp_player = World_GetPlayerAt(component.playerOwner)
+	end
+	
+	World_GetSquadsNearPoint( temp_player, sg, SGroup_GetPosition(component.sgroup), ambushRange, OT_Enemy)
+    
+	if params ~= nil and params.triggermarker ~= nil then
+		-- In addition to guarding my own position, guard the triggermarker if it is defined.
+		
+		local sg_TriggeringSquads = SGroup_CreateIfNotFound("sg_TriggeringSquads")
+			
+		if params ~= nil and params.triggermarker ~= nil then
+			Team_GetAllSquadsNearMarker(HUMANS, sg_TriggeringSquads, Marker_FromName(params.triggermarker, ""))
+		end
+		
+		if SGroup_Count(sg_TriggeringSquads) > 0 then
+			-- Trigger squads will EITHER count down the delay, or if it's zero, cause the ambush.  Thus if a trigger squad is on the trigger for params.delay seconds, the ambush happens.
+			if data.delay > 0 then
+				data.delay = data.delay - 1
+			else
+				SGroup_AddGroup(sg, sg_TriggeringSquads)
+			end
+		end
+	end
+	
+	--Somebody close enough?  Make sure they're conscious and not stealthed themselves, then bombs away!
+	if(SGroup_Count(sg) > 0)then   
+		local squad = SGroup_GetNonKnockedOutSquad(sg)
+		if(squad ~= nil and (not Squad_IsInfiltrated(squad)))then
+			--Okay... gonna stick to this order and do Ability First, Unstealth Second.
+
+			-- If a specific stealth action was passed in, use it.
+			if params ~= nil and params.ability ~= nil then
+				if params.targettype ~= nil then
+					if params.targettype == "position" then
+						Cmd_SquadAbilityPos(component.sgroup, params.ability, SGroup_GetPosition(sg), true)
+					elseif params.targettype == "squad" then
+						Cmd_SquadAbilitySquad(component.sgroup, params.ability, sg, true)
+					else
+						Cmd_SquadAbilityPos(component.sgroup, params.ability, SGroup_GetPosition(sg), true)
+					end
+				else
+					Cmd_SquadAbilityPos(component.sgroup, params.ability, SGroup_GetPosition(sg), true)
+				end
+			elseif (component.infiltration ~= nil) then
+				if (component.ambush ~= nil) then
+					Cmd_SquadAbilityPos(component.sgroup, component.ambush, SGroup_GetPosition(sg), true)
+				end
+			else -- This else should be removed altogether, but is left here to accomodate for unknown references
+				print("WARNING!!!")
+				print("AMBUSH ability not specified, using default based on main enemy race")
+				if (race == "chaos_marines") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_csm_blight_grenade end
+						Cmd_SquadAbilityPos(component.sgroup, ability , SGroup_GetPosition(sg), true)
+					else
+						if ability == 0 then ability = abil_camp_csm_all_frag_grenade_npc end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					end
+				end
+				if (race == "orks") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_ork_stikkbomb end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					else
+						if ability == 0 then ability = abil_camp_ork_damage_aoe_stikkbomb_npc end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					end
+				end
+				if (race == "eldar") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_eld_plasma_grenade end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					else
+						if ability == 0 then ability = abil_camp_eld_damage_aoe_grenade_npc end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					end
+				end
+				if (race == "space_marines") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_sm_frag_grenade end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					else
+						if ability == 0 then ability = abil_camp_sm_damage_aoe_grenade_npc end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					end
+				end
+				if (race == "imperial_guard") then
+					if Campaign_GetCampaignID() == "space_marines" or Campaign_GetCampaignID() == "xp1" then
+						if ability == 0 then ability = abil_camp_npc_sm_frag_grenade end
+						Cmd_SquadAbilityPos(component.sgroup, ability,SGroup_GetPosition(sg), true)
+					else
+						if ability == 0 then ability = abil_camp_ig_acc_damage_aoe_frag_grenade_npc end
+						Cmd_SquadAbilityPos(component.sgroup, ability, SGroup_GetPosition(sg), true)
+					end
+				end
+			end
+			
+			component.StateMachine:GotoState( "Combat", component )
+			
+		else
+			return false
+		end
+	end
+	
+	return false
+	
+end
+
+function Ai.Traits.Ambush.Combat.OnEnter(component, data, params)
+	-- If still in stealth, unstealth and attack.
+	local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+
+	-- If a specific stealth action was passed in, use it.
+--~ 	if params ~= nil and params.stealth ~= nil then
+--~ 		component.infiltration = params.stealth
+--~ 	end
+
+	if (SGroup_IsInfiltrated(component.sgroup, true)) then
+		if params ~= nil and params.stealth ~= nil then
+			Cmd_SquadAbility(component.sgroup, params.stealth, true)
+			if (component.ambushFX ~= nil) then
+				ModMisc_TriggerDcaAction(component.ambushFX, 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+			end
+		elseif (component.infiltration ~= nil) then
+			Cmd_SquadAbility(component.sgroup, component.infiltration, true)
+			if (component.ambushFX ~= nil) then
+				ModMisc_TriggerDcaAction(component.ambushFX, 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+			end
+		else -- This else should be removed altogether, but is left here to accomodate for unknown references
+			print("WARNING!!!")
+			print("INFILTRATION ability not specified, using default based on main enemy race")
+			local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+			if (race == "orks") then
+				ModMisc_TriggerDcaAction("abilities\\ork\\teleport_nob_arrive", 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+				Cmd_SquadAbility(component.sgroup, abil_camp_ork_kommandos_buff_self_infiltration, true)
+			elseif (race == "eldar") then
+				ModMisc_TriggerDcaAction("Abilities\\Eldar\\on_charge", 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+				Cmd_SquadAbility(component.sgroup, abil_camp_eld_ranger_buff_self_infiltrate, true)
+			elseif (race == "tyranids") then
+				Cmd_SquadAbility(component.sgroup, abil_camp_tyr_ravener_buff_self_burrow, true)
+			elseif (race == "space_marines") then
+				ModMisc_TriggerDcaAction("abilities\\ork\\teleport_nob_arrive", 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+				Cmd_SquadAbility(component.sgroup, abil_camp_sm_scout_buff_self_infiltrate, true)
+			end
+		end
+	end
+
+end
+
+function Ai.Traits.Ambush.Combat.Update(component, data, params)
+	
+	
+end
+
+
+-------------------------------------------------------------------------
+-- AmbushPosition
+--
+-- Units enter stealth upon spawn, leap out and attack player when he gets close the target position.
+
+function Ai.Traits.AmbushPosition.Idle.OnEnter(component, data)
+	local t_ambush = Ai.Traits.AmbushPosition.GetDataTables (component, data)
+	if(not SGroup_IsInfiltrated(component.sgroup, true))then
+		if (component.infiltration ~= nil) then
+			Cmd_SquadAbility(component.sgroup, component.infiltration, true)
+		else
+			fatal("AmbushPosition trait requires an infiltration ability be defined.")
+		end
+	end
+	
+end
+
+function Ai.Traits.AmbushPosition.Idle.Update(component, data)
+	--Anybody close enough to attack?
+	local t_ambush = Ai.Traits.AmbushPosition.GetDataTables (component, data)
+    
+	--Somebody close enough?  Make sure they're conscious and not stealthed themselves, then bombs away!
+	if(Ai.Traits.AmbushPosition.CheckProximity(t_ambush))then  
+		Ai.Traits.AmbushPosition.BeginAttack(component, data, t_ambush)
+	end
+	
+	return false
+	
+end
+
+function Ai.Traits.AmbushPosition.BeginAttack (component, data, t_ambush)
+	if (SGroup_IsInfiltrated(component.sgroup, true)) then
+		if (component.infiltration ~= nil) then
+			Cmd_SquadAbility(component.sgroup, component.infiltration, true)
+			if (component.ambushFX ~= nil) then
+				ModMisc_TriggerDcaAction(component.ambushFX, 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+			end
+		else -- This else should be removed altogether, but is left here to accomodate for unknown references
+			fatal("AmbushPosition trait requires an infiltration ability be defined.")
+		end
+	end
+	
+	local pos = Util_GetPosition(t_ambush.Targets)
+	Cmd_AttackMovePos(component.sgroup, pos)
+	
+
+end
+
+function Ai.Traits.AmbushPosition.Combat.OnEnter(component, data)
+	
+	if (data.MoveTimer == nil) then
+		data.MoveTimer = 0
+	end
+	
+	local t_ambush = Ai.Traits.AmbushPosition.GetDataTables (component, data)
+	
+	-- If still in stealth, unstealth and attack.
+	local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+	if (SGroup_IsInfiltrated(component.sgroup, true)) then
+		if (component.infiltration ~= nil) then
+			Cmd_SquadAbility(component.sgroup, component.infiltration, true)
+			if (component.ambushFX ~= nil) then
+				ModMisc_TriggerDcaAction(component.ambushFX, 1, SGroup_GetPosition(component.sgroup), ScarGameBackend.GetPlayer(1))
+			end
+		else -- This else should be removed altogether, but is left here to accomodate for unknown references
+			fatal("AmbushPosition trait requires an infiltration ability be defined.")
+		end
+	end
+
+end
+
+function Ai.Traits.AmbushPosition.Combat.Update(component, data)
+	local t_ambush = Ai.Traits.AmbushPosition.GetDataTables (component, data)
+	
+	local pos = Util_GetPosition(t_ambush.Targets)
+	
+	if( data.MoveTimer <= 0 ) and ( component.Target ) then
+		Cmd_AttackMovePos( component.sgroup, Squad_GetPosition(component.Target) )
+		data.MoveTimer  = 5
+	else
+		data.MoveTimer  = data.MoveTimer  - 1
+	end	
+
+end
+
+function Ai.Traits.AmbushPosition.CheckProximity (eval)
+	local t_tempPlayers = ScarGameBackend.GetHumanPlayers()
+	for k, v in pairs (t_tempPlayers) do
+		local v1 = eval.Targets
+		local pos = Util_GetPosition(v1)
+		local range = eval.Range or Marker_GetProximityRadius(v1)
+		
+		if (Prox_ArePlayersNearMarker(v, pos, eval.AllMustBeNear, range)) then
+			return true
+		end
+	end
+
+	return false	
+end
+
+function Ai.Traits.AmbushPosition.GetTarget (t)
+	local target
+	
+	if (t.targetType == "ST_EGROUP") then
+		target = EGroup_CreateIfNotFound(t.target)
+	elseif (t.targetType == "ST_SGROUP") then
+		target = SGroup_CreateIfNotFound(t.target)
+	elseif (t.targetType == "ST_SCARPOS") then
+		target = World_Pos(t.target)
+	elseif (t.targetType == "ST_MARKER") then
+		target = Marker_FromName(t.target, "")
+	else
+		fatal("Invalid targetType; received "..t.targetType)
+	end
+	
+	return target
+end
+
+function Ai.Traits.AmbushPosition.GetDataTables (component, data)
+	t_ambush = {}
+	t_ambush.Targets = Ai.Traits.AmbushPosition.GetTarget(component.ambushPosition)
+	t_ambush.Range = component.ambushRange or 20
+	t_ambush.AllMustBeNear = false
+	
+	return t_ambush
+end
+
+
+-------------------------------------------------------------------------
+-- InstaRetreat
+--
+-- Units retreat as soon as they spot the player (for stagin purpouses mostly)
+
+function Ai.Traits.InstaRetreat.Idle.OnEnter(component, data)
+	
+end
+
+function Ai.Traits.InstaRetreat.Idle.Update(component, data)
+	--Anybody close enough to attack?
+	t_retreat = {}
+	t_retreat.Targets = component.sgroup
+	t_retreat.Range = component.ambushRange or 20
+	t_retreat.AllMustBeNear = false
+    
+	--Somebody close enough?  Make sure they're conscious and not stealthed themselves, then bombs away!
+	if(Ai.Traits.AmbushPosition.CheckProximity(t_retreat))then  
+		component.StateMachine:GotoState( "Combat", component )
+	end
+	
+	return false
+	
+end
+
+function Ai.Traits.InstaRetreat.Combat.OnEnter(component, data)
+	Cmd_Retreat(component.sgroup) -- make this a retreat to position
+end
+
+function Ai.Traits.InstaRetreat.Combat.Update(component, data)
+
+end
+
+
+-------------------------------------------------------------------------
+-- Caster
+--
+-- Units use a variety of abilities made available to them in the AE.
+-- Parameters available are abilityOnSelf, abilityOnAttacker, abilityOnAlly, abilityOnPos
+-- These parameters are ability blueprints from AutoBlueprints.scar
+-- When using abilityOnAlly, you can include optional parameters Range and HealthCheck
+-- Range is the radius around the caster that the game will look for allied squads
+-- HealthCheck is a number between 0 and 1 that tells the caster to target squads with average health
+-- less than healthCheck
+
+function Ai.Traits.Caster.Idle.OnEnter(component, data)
+--~ 	-- First barrage will fire as soon as player is within range.
+--~ 	if data.countDown == nil then
+--~ 		data.countDown = 0
+--~ 	end
+end
+
+function Ai.Traits.Caster.Idle.Update(component, data)
+	
+--~ 	--Countdown at 0 yet?  If so, look for a target within 50 meters.
+--~ 	if data.countDown <= 0 then
+--~ 	
+--~ 		local sg = SGroup_CreateIfNotFound("tempCasterTargetSG")
+--~ 		SGroup_Clear(sg)
+--~ 		World_GetSquadsNearPoint( Campaign.GetMainOpponent(), sg, SGroup_GetPosition(component.sgroup), 55, OT_Enemy)
+--~     
+--~ 		--Found a target within 50 meters?  Make sure they're conscious, then bombs away!
+--~ 		if(Prox_AreTeamsNearMarker(HUMANS, SGroup_GetPosition(component.sgroup), ANY, 55))then   
+--~ 			local squad = SGroup_GetNonKnockedOutSquad(sg)
+--~ 			if(SGroup_Count(sg) > 0 and squad ~= nil and (not Squad_IsInfiltrated(squad)))then
+--~ 				local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+--~ 				
+--~ 				print("ARTILLERY FIRED BY "..race)
+--~ 				
+--~ 				if (race == "orks") then
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_ork_mortar_launcher, Squad_GetPosition(squad), true)
+--~ 				end
+--~ 				if (race == "eldar") then
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_eld_d_cannon_artillery, Squad_GetPosition(squad), true)
+--~ 				end
+--~ 				if (race == "tyranids") then
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_tyr_warp_artillery, Squad_GetPosition(squad), true)
+--~ 				end
+--~ 					
+--~ 				data.countDown = 10
+--~ 				return true
+--~ 			end        
+--~ 		else
+--~ 			return false
+--~ 		end
+--~ 	else
+--~ 		data.countDown = data.countDown - 1
+--~ 	end
+--~ 	
+--~ 	return false
+	
+end
+
+function Ai.Traits.Caster.Combat.OnEnter(component, data, params)
+	if data.countDown == nil then
+		data.countDown = 4
+	end
+
+	-- Warlock Casters will activate a shield upon seeing the player.
+	local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+
+	if (race == "eldar") and params == nil then
+--~ 		Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_eld_warlock_conceal, component.sgroup, true)
+	end
+	
+	 -- Script below added for XP2
+	 if params ~= nil then
+		if params.abilityOnSelf ~= nil then 
+			Cmd_SquadAbility(component.sgroup, params.abilityOnSelf,true)
+		end
+	end
+end
+
+function Ai.Traits.Caster.Combat.Update(component, data, params)
+
+	--Countdown at 0 yet?  If so, look for a target within 50 meters.
+	if data.countDown <= 0 and (SGroup_CountSpawned(component.sgroup) > 0) then
+		data.countDown = 10
+	
+		local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+	
+		if params ~= nil then
+			if params.abilityOnSelf ~= nil then
+				Cmd_SquadAbility(component.sgroup, params.abilityOnSelf,true)
+			elseif params.abilityOnAttacker ~= nil then
+				data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+				SGroup_Clear(data.attackers)
+				SGroup_GetLastAttacker( component.sgroup, data.attackers )
+				if not SGroup_IsEmpty(data.attackers) and not SGroup_IsUnconscious(data.attackers, ALL) then
+					if params.Range == nil then
+						Cmd_SquadAbilitySquad(component.sgroup, params.abilityOnAttacker, data.attackers, true)
+					elseif Prox_SGroupSGroup(data.attackers, component.sgroup, PROX_CENTER) < params.Range then
+						Cmd_SquadAbilitySquad(component.sgroup, params.abilityOnAttacker, data.attackers, true)
+					end
+				end
+			elseif params.abilityOnAlly ~= nil then
+				data.allies = SGroup_CreateIfNotFound("sgCasterAllies")
+				local sg_allyTarget = SGroup_CreateIfNotFound("sg_allyTarget")
+				local range = params.Range or 25
+				SGroup_Clear(data.allies)
+				World_GetSquadsNearPoint( Util_GetPlayerOwner(component.sgroup), data.allies, SGroup_GetPosition(component.sgroup), range, OT_Ally)
+				local allyTarget = SGroup_GetRandomSpawnedSquad(data.allies)
+				SGroup_Add(sg_allyTarget, allyTarget)
+				if params.healthCheck == nil then
+					if not SGroup_IsEmpty(sg_allyTarget) and not SGroup_IsUnconscious(sg_allyTarget, ALL) and not SGroup_Compare(component.sgroup, sg_allyTarget) then
+						Cmd_SquadAbilitySquad(component.sgroup, params.abilityOnAlly, sg_allyTarget, true)
+					end
+				else
+					local healthTest = function (groupid, itemindex, itemid)
+--~ 						print("HEALTH?!?! " .. (Squad_GetHealth(itemid)/Squad_GetHealthMax(itemid)))
+						if (Squad_GetHealth(itemid)/Squad_GetHealthMax(itemid)) <= params.healthCheck then
+							SGroup_Clear(sg_allyTarget)
+							SGroup_Add(sg_allyTarget, itemid)
+							return true
+						end
+						return false
+					end
+					SGroup_ForEach(data.allies, healthTest)
+					if not SGroup_IsEmpty(sg_allyTarget) and not SGroup_IsUnconscious(sg_allyTarget, ALL) and not SGroup_Compare(component.sgroup, sg_allyTarget) then
+						Cmd_SquadAbilitySquad(component.sgroup, params.abilityOnAlly, sg_allyTarget, true)
+					end
+				end
+			elseif params.abilityOnPos ~= nil then
+				data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+				SGroup_Clear(data.attackers)
+				SGroup_GetLastAttacker( component.sgroup, data.attackers )
+				if params.minRange ~= nil then
+					if Prox_SGroupSGroup(component.sgroup, data.attackers, PROX_CENTER) >= params.minRange then
+						if not SGroup_IsEmpty(data.attackers) and not SGroup_IsUnconscious(data.attackers, ALL) then
+							Cmd_SquadAbilityPos(component.sgroup, params.abilityOnPos, Util_GetPosition(data.attackers), true)
+						end
+					end
+				elseif not SGroup_IsEmpty(data.attackers) and not SGroup_IsUnconscious(data.attackers, ALL) then
+					Cmd_SquadAbilityPos(component.sgroup, params.abilityOnPos, Util_GetPosition(data.attackers), true)
+				end
+			end
+		end
+			
+	
+--~ 		if (race == "orks") and params == nil then
+
+--~ 		end
+--~ 		if (race == "space_marines") and params == nil then
+--~ 			data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+--~ 			data.allies = SGroup_CreateIfNotFound("sgCasterAllies")
+--~ 			SGroup_Clear(data.allies)
+--~ 			SGroup_Clear(data.attackers)
+--~ 			World_GetSquadsNearPoint( Campaign.GetMainOpponent(), data.allies, SGroup_GetPosition(component.sgroup), 25, OT_Ally)
+--~ 			SGroup_GetLastAttacker( component.sgroup, data.attackers )
+--~ 			local chargeTarget = SGroup_GetPosition(data.attackers)
+--~ 			if not (SGroup_IsUnconscious(data.attackers, ALL)) then
+--~ 				if SGroup_Exists("sg_eliteTech") and SGroup_Compare(component.sgroup, "sg_eliteTech") and SGroup_ContainsSGroup(data.attackers,sg_allheroes,false) then
+--~ 					Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_sm_marked_target, data.attackers, true)
+--~ 				elseif SGroup_Exists("sg_eliteApoth") and SGroup_Compare(component.sgroup, "sg_eliteApoth") then
+--~ 					if SGroup_GetAvgHealth("sg_assaultTerminators1") < 0.66 and SGroup_GetAvgHealth("sg_assaultTerminators1") > 0.1 then
+--~ 						Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_sm_apothecary_heal, data.allies, true)
+--~ 					elseif SGroup_GetAvgHealth("sg_assaultTerminators2") < 0.66 and SGroup_GetAvgHealth("sg_assaultTerminators2") > 0.1 then
+--~ 						Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_sm_apothecary_heal, data.allies, true)
+--~ 					elseif not Game_IsLetterboxed() then
+--~ 						Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_sm_merciless_blows, data.attackers, true)
+--~ 					end
+--~ 				elseif SGroup_Exists("sg_BossTarget") and SGroup_Compare(component.sgroup, "sg_BossTarget") then
+--~ 					if Prox_SGroupSGroup("sg_BossTarget",data.attackers,PROX_CENTER) < 30 then
+--~ 						Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_sm_charge_force_commander, chargeTarget, true)
+--~ 					end
+--~ 				end
+--~ 			end
+--~ 		end
+--~ 		
+--~ 		if (race == "eldar") and params == nil then
+--~ 			-- Force push
+--~ 			data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+--~ 			SGroup_Clear(data.attackers)
+--~ 			SGroup_GetLastAttacker( component.sgroup, data.attackers )
+--~ 			if not (SGroup_IsUnconscious(data.attackers, ALL)) then
+--~ 				Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_eld_force_pull, data.attackers, true)
+--~ 			end
+--~ 		end
+--~ 		if (race == "tyranids") and params == nil then
+--~ 			data.allies = SGroup_CreateIfNotFound("sgCasterAllies")
+--~ 			SGroup_Clear(data.allies)
+--~ 			
+--~ 			World_GetSquadsNearPoint( Campaign.GetMainOpponent(), data.allies, SGroup_GetPosition(component.sgroup), 25, OT_Ally)
+--~ 			
+--~ 			if (SGroup_CountSpawned(data.allies) > 0) then	--Somehow possible for the 'thrope to choose a despawned squad and nothing else
+--~ 				local allyTarget = SGroup_GetRandomSpawnedSquad(data.allies)
+--~ 				local sg_AllyTarget = SGroup_Create("sg_AllyTarget")
+--~ 				
+--~ 				if not (allyTarget == 0) then					-- Double precaution.  When SGroupGetRandomSpawnedSquad fails, it returns 0.
+--~ 				
+--~ 					SGroup_Add( sg_AllyTarget, allyTarget )
+--~ 					Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_tyr_zoanthrope_grant_shield, sg_AllyTarget, true)
+--~ 					data.countDown = 14
+--~ 				else
+--~ 					data.countDown = 5
+--~ 				end
+--~ 			else
+--~ 				data.countDown = 5
+--~ 			end
+--~ 		end
+			
+	else
+		data.countDown = data.countDown - 1
+	end
+	
+	return false
+	
+end
+
+-------------------------------------------------------------------------
+-- HitAndRun
+--
+-- Units will charge the player if close enough, use an ability and then retreat
+
+function Ai.Traits.HitAndRun.Idle.OnEnter(component, data)
+	data.MoveTimer = 1
+	component.Target = nil
+	return true
+end
+
+function Ai.Traits.HitAndRun.Idle.Update(component, data)	
+	
+	-- if there is not target yet, get one
+	if (component.Target == nil) then
+		local maxRange = nil
+		local t_player = {ScarGameBackend.GetPlayer(1), ScarGameBackend.GetPlayer(2)}
+		local SquadTable = getConsciousSquads(t_player, false, maxRange, component.sgroup)
+		
+		if (table.getn(SquadTable) > 0)  then
+			local SquadIndex  = PC_Rand(1, table.getn(SquadTable))
+			component.Target = SquadTable[SquadIndex]
+		end
+	end
+	
+	if (SGroup_CountSpawned(sg_allheroes) > 0) then
+		-- if return timer check is good
+		if (Prox_SGroupSGroup(component.sgroup, sg_allheroes, PROX_SHORTEST) < 200) then
+			
+			if( data.MoveTimer <= 0 ) and ( component.Target ) then
+				Cmd_AttackMovePos( component.sgroup, Squad_GetPosition(component.Target) )
+				data.MoveTimer  = 5
+			else
+				data.MoveTimer  = data.MoveTimer  - 1
+			end
+			
+			if (component.EncounteredOnce == nil) then
+				component.EncounteredOnce = 0
+			end
+			
+		end
+	end
+	
+end
+
+function Ai.Traits.HitAndRun.Combat.OnEnter(component, data)
+	local initialToss = PC_Rand( 2, 4 )
+	data.retreatTimer = PC_Rand( 8, 15 )
+	data.countDown = initialToss
+	data.retreatTimer = nil
+	data.canLaunch = true
+end
+
+function Ai.Traits.HitAndRun.Combat.Update(component, data)
+
+	if (data.countDown > 0) then
+		data.countDown = data.countDown - 1
+	end
+	
+	if (data.retreatTimer == nil) then
+		data.retreatTimer = PC_Rand( 8, 15 )
+	end
+	
+	print(data.countDown)
+	print(data.canLaunch)
+	print("retreat"..data.retreatTimer)
+	-- Use ability
+	if ((data.countDown <= 0) and (data.canLaunch)) then
+		
+		data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+		SGroup_Clear(data.attackers)
+		SGroup_GetLastAttacker( component.sgroup, data.attackers )
+		-- if target is conscious
+		if not (SGroup_IsUnconscious(data.attackers, ALL)) then
+--~ 			-- if target squad is in range
+--~ 			if (Prox_SGroupSGroup(data.attackers, component.sgroup, PROX_CENTER) < 45) then
+				Cmd_StopSquads(component.sgroup)
+				-- if hit & run ability is defined, use it
+				if (component.Actions ~= nil) then
+					Cmd_SquadAbilitySquad(component.sgroup, getItem(component.Actions), data.attackers, true)
+				end
+				
+				data.canLaunch = false
+				
+--~ 			end
+		else
+			return false
+		end
+		
+	end
+	
+	-- Retreat
+	if ((data.retreatTimer ~= nil) and (data.retreatTimer <= 0) and (not Prox_AreSquadsNearMarker(component.sgroup, component.startingPosition, false, 45))) then
+		Cmd_Retreat(component.sgroup, component.startingPosition)
+	end
+	
+	if (data.retreatTimer ~= nil and data.retreatTimer > 0) then
+		data.retreatTimer = data.retreatTimer - 1
+	end
+end
+
+-------------------------------------------------------------------------
+-- Ownership
+--
+-- Changes ownership depending on who owns the specified object
+
+function Ai.Traits.Ownership.Idle.OnEnter(component, data)
+
+end
+
+function Ai.Traits.Ownership.Idle.Update(component, data)
+	local egHost
+	
+	-- check ownership
+	if component.egHost == nil then host = "eg_loyaltyGen1"
+	else host = component.egHost end
+	
+	print("IDLE -> UPDATE")
+	abilities_updateOwner(SGroup_GetSpawnedSquadAt(component.sgroup, 1), egHost)
+end
+
+function Ai.Traits.Ownership.Combat.OnEnter(component, data)
+
+end
+
+function Ai.Traits.Ownership.Combat.Update(component, data)
+	local egHost
+	
+	-- check ownership
+	if component.egHost == nil then host = "eg_loyaltyGen1"
+	else host = component.egHost end
+	
+	print("COMBAT -> UPDATE")
+	abilities_updateOwner(SGroup_GetSpawnedSquadAt(component.sgroup, 1), egHost)
+end
+
+-------------------------------------------------------------------------
+-- Rally
+--
+-- Casts ability on self if suppressed
+
+function Ai.Traits.Rally.Idle.OnEnter(component, data)
+
+end
+
+function Ai.Traits.Rally.Idle.Update(component, data)
+	
+end
+
+function Ai.Traits.Rally.Combat.OnEnter(component, data)
+
+end
+
+function Ai.Traits.Rally.Combat.Update(component, data)
+	-- if suppressed
+	if (SGroup_GetCourage(component.sgroup) < 0.75) then
+		Cmd_SquadAbility(component.sgroup, getItem(component.Actions), true)
+	end
+
+end
+
+-------------------------------------------------------------------------
+-- Raider
+-- Sent by boss to seek and confront the user
+
+function Ai.Traits.Raider.Idle.OnEnter(component, data)
+	data.MoveTimer = 1
+	--FOW_RevealSGroupOnly(component.sgroup, -1)
+	component.Target = nil
+	return true
+end
+
+function Ai.Traits.Raider.Idle.Update(component, data)
+	
+	if (component.Target == nil) then
+		local maxRange = nil
+		local t_player = {ScarGameBackend.GetPlayer(1), ScarGameBackend.GetPlayer(2)}
+		local SquadTable = getConsciousSquads(t_player, false, maxRange, component.sgroup)
+		
+		if (table.getn(SquadTable) > 0)  then
+			local SquadIndex  = PC_Rand(1, table.getn(SquadTable))
+			component.Target = SquadTable[SquadIndex]
+		end
+	end
+	
+--~ 	PrintObject(component.Target)
+	
+	if (component.Target == nil) then
+		--Cheese it!
+		return false
+	end
+	
+	
+	if (not Squad_IsValid(component.Target.id)) then
+		component.Target = nil
+	elseif( data.MoveTimer <= 0 ) and ( component.Target ) then
+		--print("RAIDERS SHOULD BE MOVING")
+		Cmd_AttackMovePos( component.sgroup, Squad_GetPosition(component.Target) ) -- Bug: this command will not work if the raiders were in combat already...
+		--Cmd_MoveToPos( component.sgroup, Squad_GetPosition(component.Target) ) -- Bug: this command will not work if the raiders were in combat already...
+		--Camera_SetTarget(Squad_GetPosition(component.Target))
+		data.MoveTimer  = 5
+	else
+		data.MoveTimer  = data.MoveTimer  - 1
+	end	
+	
+	if (component.EncounteredOnce == nil) then
+		component.EncounteredOnce = 0
+	end
+	
+	ActionLogic(component, data, true)
+end
+
+function Ai.Traits.Raider.Combat.OnEnter (component, data)
+--~ 	if (component.EncounteredOnce < 1) then
+--~ 		local Raiderpos = SGroup_GetPosition(component.sgroup)
+--~ 		TargetSGroup = SGroup_CreateIfNotFound("TargetSGroup")
+--~ 		SGroup_Clear(TargetSGroup)
+--~ 		local RaiderSquad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+--~ 		local TargetSquad = Squad_GetAttackTargets(RaiderSquad, TargetSGroup)
+--~ 		local Targetpos = SGroup_GetPosition(TargetSGroup)
+--~ 		local vector = Vector3_Scale(Vector3_Add(Raiderpos, Targetpos),0.5)
+--~ 		Camera_SetTarget(vector, true, 75.0, true)
+--~ 		
+--~ 		component.EncounteredOnce = component.EncounteredOnce + 1
+--~ 	end
+end
+
+function Ai.Traits.Raider.Combat.Update (component, data)	
+	ActionLogic(component, data, true)
+end
+
+-------------------------------------------------------------------------
+-- Boss Healer
+
+
+function Ai.Traits.BossHealer.OnEvent.BossIsHurt(component, event)
+	local data = component.StateMachine:GetData( "BossHealer", "Combat" )
+	local LifeSpan = component.StateMachine:GetTimeActive()
+	data.LifeSpan = LifeSpan
+	
+	if( CanHeal(component, event.sender) and LifeSpan >= 10) then
+		IssueHealBossCommand(component, event.sender, event.entity)
+		local data = component.StateMachine:GetData( "Healer", "Healing" )
+		component.StateMachine:GotoState( "Healing", component )
+		--SGroup_CreateKickerMessage(component.sgroup, ScarGameBackend.GetPlayer(1), 9039728,"yellow", 1.0) -- LOCDB [9039728] 'Healing Boss!'
+		return Ai.DISCARD_EVENT
+	else
+		return false
+	end
+end
+
+function Ai.Traits.BossHealer.Healing.Update(component, data)
+
+	local squad = SGroup_GetSpawnedSquadAt( component.sgroup, 1 )
+	
+	if( (Squad_HasActiveCommand(squad) and Squad_GetActiveCommand(squad) ~= SQUADSTATEID_Ability) or component.StateMachine:GetTimeInState() > 15 ) then
+		AIPrint( component.StateMachine:GetTimeActive(), "BossHealer.Healing.Update: No longer in Ability state", component)
+        component.StateMachine:GotoState( "Idle", component )
+		return true
+	end
+	
+	return false
+end
+
+function IssueHealBossCommand(component, targetComponent, entity)
+	local abilityId = Util_GetAbilityID( "ability/campaign/NPC/race_ork/ork_a52_boss_medkit" )
+	Cmd_SquadAbilityEntity(component.sgroup, abilityId, entity )
+end
+
+-------------------------------------------------------------------------
+-- ReplaceUnit
+
+function Ai.Traits.ReplaceUnit.Dead.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a ReplaceUnit and now I'm dead :( **")
+	local data = component.StateMachine:GetData( "ReplaceUnit", "Dead" )    
+	local sgroupToSpawn = component.sgroupToRespawn
+	local colour = component.colour
+	
+	ReplaceReplaceableUnit(component, sgroupToSpawn, colour)
+	
+--~ 	local speech = component.deathSpeech
+--~ 	
+--~ 	if (speech ~= nil) then
+--~ 		Util_StartIntel(speech)
+--~ 	end
+end
+
+function ReplaceReplaceableUnit(component, sgroup, colour)
+	SGroup_ReSpawn(component.sgroupToRespawn)
+	
+	local spawnEffect
+	
+	local SingleSpawnEffect = function (groupid, itemindex, squaditem) -- spawn effect on every unit within the squad
+		local entIndex = 0
+		local entMax = Squad_Count(squaditem)
+		
+		while (entIndex < entMax) do
+			local entItem = Squad_EntityAt(squaditem, entIndex)
+			local entPos = Entity_GetPosition(entItem)
+			ModMisc_TriggerDcaAction(spawnEffect, 10, entPos, Entity_GetPlayerOwner(entItem))
+			entIndex = entIndex + 1
+		end
+		return true
+	end
+	
+	if (component.spawnEffect ~= nil) then -- Spawn Effects
+		spawnEffect = component.spawnEffect
+		SGroup_ForEach(component.sgroupToRespawn, SingleSpawnEffect)
+	end
+	
+	if (component.spawnReticule ~= nil) then
+		spawnEffect = component.spawnReticule
+		SGroup_ForEach(component.sgroupToRespawn, SingleSpawnEffect)
+	end
+	
+	if( component.colour ~= nil ) then
+		ScarGameBackend.SetTeamColour(sgroup, component.colour)
+	end
+end
+
+-------------------------------------------------------------------------
+-- Repair, for Techmarine NPC in Mission X13
+
+function Ai.Traits.Repair.Combat.OnEnter(component, data)
+	if data.countDown == nil then
+		data.countDown = 7
+		data.turretCount = 0
+	end
+end
+
+function Ai.Traits.Repair.Combat.Update(component, data)
+
+	--Countdown at 0 yet?  If so, look for a target within 50 meters.
+	if data.countDown <= 0 then
+		data.countDown = 14
+			if SGroup_Exists("sg_eliteTechTank") and SGroup_GetAvgHealth("sg_eliteTechTank") < 0.6 then
+				Cmd_SquadAbilitySquad(component.sgroup, abil_camp_npc_sm_repair, "sg_eliteTechTank", true)
+			end
+	else	
+		data.countDown = data.countDown - 1
+	end
+end
+
+------------------------------------------------------------------------
+-- TurretBuilder -- Make a squad try to build or call in turrets
+------------------------------------------------------------------------
+
+function Ai.Traits.TurretBuilder.Combat.OnEnter(component, data)
+	if data.countDown == nil then
+		data.countDown = 6
+		data.turretCount = 0
+	end
+end
+
+function Ai.Traits.TurretBuilder.Combat.Update(component, data)
+
+	--Countdown at 0 yet?  If so, spawn a turret.
+	if (SGroup_CountDeSpawned(component.sgroup)) == 0 and not SGroup_IsEmpty(component.sgroup) and data.countDown <= 0 then
+		data.countDown = 20
+		if data.turretCount == 1 then
+			data.countDown = 30
+		elseif data.turretCount == 2 then
+			data.countDown = 40
+		elseif data.turretCount == 3 then
+			data.countDown = 50
+		elseif data.turretCount > 3 then
+			data.countDown = 90
+		end
+		local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+		local targetPosition = SGroup_GetPosition(component.sgroup)
+		targetPosition.x = targetPosition.x + 2
+		targetPosition.z = targetPosition.z + 2
+			if race == "space_marines" then
+				if g_turretBuildType == nil then
+					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_sm_call_turret_enemy, targetPosition, true)
+					data.turretCount = data.turretCount + 1
+					g_turretBuildType = "missile"
+				elseif g_turretBuildType == "missile" then
+					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_sm_call_missile_turret_enemy, targetPosition, true)
+					data.turretCount = data.turretCount + 1
+					g_turretBuildType = nil
+--~ 				elseif g_turretBuildType == "lascannon" then
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_sm_call_lascannon_turret_enemy, targetPosition, true)
+--~ 					g_turretBuildType = nil
+				end
+			end
+	else	
+		data.countDown = data.countDown - 1
+	end
+end
+
+------------------------------------------------------------------------
+-- TurretBuilderXP2 -- Make a squad try to build or call in turrets
+------------------------------------------------------------------------
+
+function Ai.Traits.TurretBuilderXP2.Combat.OnEnter(component, data)
+	if data.countDown == nil then
+		data.countDown = 6
+		data.turretCount = 0
+	end
+end
+
+function Ai.Traits.TurretBuilderXP2.Combat.Update(component, data)
+
+	--Countdown at 0 yet?  If so, spawn a turret.
+	if (SGroup_CountDeSpawned(component.sgroup)) == 0 and not SGroup_IsEmpty(component.sgroup) and data.countDown <= 0 then
+		data.countDown = 20
+		if data.turretCount == 1 then
+			data.countDown = 30
+		elseif data.turretCount == 2 then
+			data.countDown = 40
+		elseif data.turretCount == 3 then
+			data.countDown = 50
+		elseif data.turretCount > 3 then
+			data.countDown = 90
+		end
+		local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+		local targetPosition = SGroup_GetPosition(component.sgroup)
+		targetPosition.x = targetPosition.x + 2
+		targetPosition.z = targetPosition.z + 2
+			if race == "space_marines" then
+				if g_turretBuildType == nil then
+					Cmd_SquadAbilityPos(component.sgroup, abil_camp_sm_techmarine_call_turret_defend_xp2, targetPosition, true)
+					data.turretCount = data.turretCount + 1
+					g_turretBuildType = "missile"
+				elseif g_turretBuildType == "missile" then
+					Cmd_SquadAbilityPos(component.sgroup, abil_camp_sm_techmarine_call_missile_turret_defend_xp2, targetPosition, true)
+					data.turretCount = data.turretCount + 1
+					g_turretBuildType = nil
+--~ 				elseif g_turretBuildType == "lascannon" then
+--~ 					Cmd_SquadAbilityPos(component.sgroup, abil_camp_npc_sm_call_lascannon_turret_enemy, targetPosition, true)
+--~ 					g_turretBuildType = nil
+				end
+			end
+	else	
+		data.countDown = data.countDown - 1
+	end
+end
+
+-------------------------------------------------------------------------
+-- Dropped Mine
+
+function Ai.Traits.Mine.Idle.Update (component, data)
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+end
+
+function Ai.Traits.Mine.Combat.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a Mine going to battle **")
+    component.AbilityTimer = 5	
+	--SGroup_CreateKickerMessage(component.sgroup, ScarGameBackend.GetPlayer(1), 9041604,"yellow", 3.0) -- LOCDB [9041604] 'PROXIMITY MINE'
+end
+
+function Ai.Traits.Mine.Combat.Update (component, data)
+	
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+	
+end
+
+-------------------------------------------------------------------------
+-- Boss
+--
+-- Basic combat state for BOSS units ONLY, variant of Combatant trait
+
+Ai.Traits.Boss.OnEvent.InCombat = Ai.Traits.Combatant.OnEvent.InCombat
+Ai.Traits.Boss.OnEvent.EnemySpotted = Ai.Traits.Combatant.OnEvent.EnemySpotted
+Ai.Traits.Boss.Idle.Update = Ai.Traits.Combatant.Idle.Update
+
+function Ai.Traits.Boss.Combat.OnEnter(component, data)
+	data.countDown = 25
+--~ 	FOW_RevealArea(component.markerPosition.x, component.markerPosition.y, 55, 100000)
+--~ 	fatal("FOW should be revealed")
+--~ 	fatal(component.boss_revealFOW)
+	local boss_revealFOW = component.boss_revealFOW or false
+	if (boss_revealFOW) then
+		FOW_RevealSGroup(component.sgroup, -1)
+	end
+end
+
+function Ai.Traits.Boss.Combat.Update(component, data)
+    
+--~ 	if (Prox_MarkerSGroup(mkr_AssassinateBoss1, component.sgroup, PROX_CENTER) > 60) then
+	if (Prox_AreSquadsNearMarker(component.sgroup, component.startingPosition, true, 60) == false) then
+		Cmd_MoveToPos(component.sgroup, Util_GetPosition(component.startingPosition))
+	end
+	
+    if(Prox_AreTeamsNearMarker(HUMANS, component.startingPosition, false, 70))then -- check for proximity
+		data.countDown = 5
+	else
+		if( data.countDown == 0 ) then
+			AIPrint( component.StateMachine:GetTimeActive(), "** GOING TO IDLE **")
+			component.StateMachine:GotoState( "Idle", component )
+			return true
+		elseif (data.countDown == nil) then
+			data.countDown = 5
+		else
+			data.countDown = data.countDown - 1
+		end
+    end
+    
+		if (component.UseRandomAbilities ~= nil) then
+			ActionLogic(component, data, component.UseRandomAbilities)
+		else
+			ActionLogic(component, data, true)
+		end
+		
+	component.StateMachine.data.LastPosition = SGroup_GetPosition(component.sgroup)
+	
+	return false
+end
+
+function Ai.Traits.Boss.Idle.OnEnter (component, data)
+	--move back to center of arena
+	Cmd_MoveToPos(component.sgroup, Util_GetPosition(component.startingPosition))
+end
+
+-------------------------------------------------------------------------
+-- BRUTE Boss -> Venerated Dreadnaught Boss (Incl. Venerated Dreadnought, Bloodburn Warboss) 
+
+function Ai.Traits.BossVeneratedDreadnought.Idle.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a Dreadnought going to idle **")
+--~     FOW_RevealSGroup(component.sgroup, -1)
+	local data = component.StateMachine:GetData( "BossVeneratedDreadnought", "Combat" )
+	
+	data.noHealing = true -- don't call regular apothecaries for the boss
+	
+	if (SGroup_CountSpawned(component.sgroup) > 0) then
+		data.lastKnownPosition = SGroup_GetPosition(component.sgroup)
+	end
+	
+end
+
+function Ai.Traits.BossVeneratedDreadnought.Idle.Update (component, data)
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+end
+
+function Ai.Traits.BossVeneratedDreadnought.Combat.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a Dreadnought going to battle **")
+    if component.AbilityTimer == nil then
+		component.AbilityTimer = 0	
+	end
+end
+
+function Ai.Traits.BossVeneratedDreadnought.Combat.Update (component, data)
+	
+--~ 	-- Call for help when damaged
+--~ 	if ( not SGroup_IsInHoldEntity( component.sgroup, ANY ) ) then
+--~ 		for iSquad = 1, SGroup_CountSpawned( component.sgroup ) do
+--~ 			local squad = SGroup_GetSpawnedSquadAt( component.sgroup, iSquad )
+--~ 			for iEntity = 1, Squad_Count( squad ) do
+--~ 				local entity = Squad_EntityAt(squad, iEntity-1)
+--~ 				local thisHealth = Entity_GetHealth(entity) / Entity_GetHealthMax(entity)
+--~ 				if( thisHealth < 0.85 ) then
+--~ 					AIPrint( component.StateMachine:GetTimeActive(), "Boss Hurt, heal me", component)
+--~ 					local pos = Entity_GetPosition( entity )
+--~ 					local event = { 
+--~ 						id 		= Ai.Events.BossIsHurt,
+--~ 						sender 	= component,
+--~ 						pos 	= pos,
+--~ 						radius 	= 30,
+--~ 						entity 	= entity,
+--~ 					}
+--~ 					
+--~ 					Ai.ComponentMananger:SendEvent( event )
+--~ 				end
+--~ 			end
+--~ 		end
+--~ 	end
+	printEvalvarOnScreen(component, data)
+end
+
+function Ai.Traits.BossVeneratedDreadnought.Dead.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a Dreadnought and now I'm dead :( **")
+	local data = component.StateMachine:GetData( "BossVeneratedDreadnought", "Combat" )    
+	
+--~ 	local speech1 = component.deathSpeech
+--~ 	local speech2 = component.deathSpeech2
+--~ 	
+--~ 	if (speech1 ~= nil) then
+--~ 		Util_StartIntel(speech1)
+--~ 	end
+--~ 		
+--~ 	if (speech2 ~= nil) then
+--~ 		Ai.PlayerVicSpeech(speech2)
+--~ 	end
+
+end
+
+function Ai.PlayerVicSpeech (speech)
+	local player = ScarGameBackend.GetPlayer(1)
+	local race = Player_GetRaceName(player)
+--~ 	print("PLAYER RACE = "..race)
+	if (speech[race] == nil) then
+		PrintObject(speech)
+		fatal("Speech cannot be nil")
+	else
+		Util_StartIntel(speech[race])
+	end
+end
+
+-------------------------------------------------------------------------
+-- Stealth Boss (Komando, Sgt Scout)
+
+function Ai.Traits.StealthBoss.Idle.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a StealthBoss going to idle **")
+--~     FOW_RevealSGroup(component.sgroup, -1)
+	local data = component.StateMachine:GetData( "StealthBoss", "Combat" )
+	
+	data.noHealing = true -- don't call regular apothecaries for the boss
+	
+	data.lastKnownPosition = SGroup_GetPosition(component.sgroup)
+end
+
+function Ai.Traits.StealthBoss.Idle.Update (component, data)
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+	
+--~ 	-- if despawned
+--~ 	if (SGroup_CountDeSpawned(component.sgroup) > 0) then
+--~ 		-- if in Prox
+--~ 		if (Prox_AreTeamsNearMarker(HUMANS, component.startingPosition, false, 70)) then
+--~ 			SGroup_ReSpawn(component.sgroupToRespawn)
+--~ 		end
+--~ 	end
+	
+	printEvalvarOnScreen(component, data)
+end
+
+function Ai.Traits.StealthBoss.Combat.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a StealthBoss going to battle **")
+    component.AbilityTimer = 5
+    
+end
+
+function Ai.Traits.StealthBoss.Combat.Update (component, data)
+	printEvalvarOnScreen(component, data)
+end
+
+function Ai.Traits.StealthBoss.Dead.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a StealthBoss and now I'm dead :( **")
+	local data = component.StateMachine:GetData( "StealthBoss", "Combat" )
+	
+--~ 	local speech = component.deathSpeech
+--~ 	
+--~ 	if (speech ~= nil) then
+--~ 		Util_StartIntel(speech)
+--~ 	end
+	
+end
+
+-------------------------------------------------------------------------
+-- Tank Boss Mechanic (Incl. Eldar Fire Prism) 
+
+function Ai.Traits.TankBoss.Idle.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a TankBoss going to idle **")
+--~     FOW_RevealSGroup(component.sgroup, -1)
+--~ 	FOW_RevealSGroupOnly(component.sgroup, -1)
+	local data = component.StateMachine:GetData( "TankBoss", "Combat" )
+	
+	data.noHealing = true -- don't call regular apothecaries for the boss
+	
+	data.lastKnownPosition = SGroup_GetPosition(component.sgroup)
+end
+
+function Ai.Traits.TankBoss.Idle.Update (component, data)
+	Ai.Traits.TankBoss.MoveMobileBoss (component, data)
+	
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+	
+	data.stage = component.stage
+end
+
+function Ai.Traits.TankBoss.Combat.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a TankBoss going to battle **")
+    component.AbilityTimer = 5
+    
+    -- sgroup = component.encounter.sgroup
+end
+
+function Ai.Traits.TankBoss.Combat.Update (component, data)
+	Ai.Traits.TankBoss.MoveMobileBoss (component, data)
+	local proxToTarget = -1
+	local speedTowardTarget = -1
+	
+	-- debug info for tank bosses
+	if (component.StateMachine.data.Target ~= nil) then
+		proxToTarget = World_DistanceSGroupToPoint(component.sgroup, component.StateMachine.data.Target, true)
+		if (component.StateMachine.data.PrevProxToTarget ~= nil) then -- determine speed toward target
+			speedTowardTarget = component.StateMachine.data.PrevProxToTarget - proxToTarget
+			component.StateMachine.data.PrevProxToTarget = proxToTarget
+		else
+			component.StateMachine.data.PrevProxToTarget = proxToTarget
+		end
+	else
+		LogicPrint("FALSE")
+		proxToTarget = -1
+	end
+	
+	data.proxToTarget = proxToTarget
+	data.speed = speedTowardTarget
+	
+	data.stage = component.stage
+end
+
+function Ai.Traits.TankBoss.Dead.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a TankBoss and now I'm dead :( **")
+	local data = component.StateMachine:GetData( "TankBoss", "Combat" )    
+	
+	local speech = component.deathSpeech
+	
+	if (speech ~= nil) then
+		Util_StartIntel(speech)
+	end
+
+end
+
+function Ai.Traits.TankBoss.MoveMobileBoss (component, data)
+	-- Move boss from battle arena 1 to 2 to 3
+	local position
+	local path = component.StateMachine.data.Path
+--~ 	print("component.StateMachine.data = ")
+--~ 	PrintObject(component.StateMachine.data)
+	
+	--local path
+	-- does this have to be in combat.onenter?
+    -- path = component.StateMachine.data.Path
+    -- currentPosition = 1
+	if ( component.stage == "retreat1" ) then
+		marker = path[3]
+		position = Marker_GetPosition(marker)
+		component.startingPosition = position
+		Cmd_MoveToPos(component.sgroup, position)
+--~ 	elseif ( component.stage == "retreat2" ) then
+--~ 		marker = path[3]
+--~ 		position = Marker_GetPosition(marker)
+--~ 		component.startingPosition = position
+--~ 		Cmd_MoveToPos(component.sgroup, position)
+	end
+    -- path[1] = mkr
+    -- path[2] = mkr
+    -- path[3] = mkr
+end
+
+
+
+function printEvalvarOnScreen (component, data) --getEvalvarData
+	data.CeaseFire         = component.StateMachine.data.CeaseFire
+	data.CanCancel         = component.StateMachine.data.CanCancel
+	data.UnitHealth        = component.StateMachine.data.UnitHealth
+	data.UnitState         = component.StateMachine.data.UnitState
+	data.PlayerProx        = component.StateMachine.data.PlayerProx
+	data.UnitStage         = component.StateMachine.data.UnitStage
+	data.StartProx         = component.StateMachine.data.StartProx
+	data.TargetProx        = component.StateMachine.data.TargetProx
+	data.SpeedToTarget     = component.StateMachine.data.SpeedToTarget
+	data.Furthest          = component.StateMachine.data.Furthest
+	data.HasTargetBuilding = component.StateMachine.data.HasTargetBuilding
+	data.IsSuppressed      = component.StateMachine.data.IsSuppressed
+	data.PlayerHealth      = component.StateMachine.data.PlayerHealth
+	data.PlayerCount       = component.StateMachine.data.PlayerCount
+	data.HealthIsVis       = component.StateMachine.data.HealthIsVis
+	data.ActiveCommand     = component.StateMachine.data.ActiveCommand
+end
+
+-------------------------------------------------------------------------
+-- MiniBoss
+
+function Ai.Traits.MiniBoss.Idle.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a MiniBoss going to idle **")
+    FOW_RevealSGroup(component.sgroup, -1)
+	local data = component.StateMachine:GetData( "MiniBoss", "Combat" )
+	
+	data.noHealing = true -- don't call regular apothecaries for the boss
+	
+	data.lastKnownPosition = SGroup_GetPosition(component.sgroup)
+	
+end
+
+function Ai.Traits.MiniBoss.Idle.Update (component, data)
+	data.stage = component.stage
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+end
+
+function Ai.Traits.MiniBoss.Combat.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a MiniBoss going to battle **")
+    component.AbilityTimer = 5
+    
+end
+
+function Ai.Traits.MiniBoss.Combat.Update (component, data)
+	if (component.UseRandomAbilities ~= nil) then
+		ActionLogic(component, data, component.UseRandomAbilities)
+	else
+		ActionLogic(component, data, true)
+	end
+	data.stage = component.stage
+end
+
+function Ai.Traits.MiniBoss.Dead.OnEnter (component, data)
+    AIPrint( component.StateMachine:GetTimeActive(), "** I'm a MiniBoss and now I'm dead :( **")
+	local data = component.StateMachine:GetData( "MiniBoss", "Combat" )
+	
+	local speech = component.deathSpeech
+	
+	if (speech ~= nil) then
+		Util_StartIntel(speech)
+	end
+	
+end
+
+-------------------------------------------------------------------------
+-- Wargear
+
+function Ai.Traits.DropWargear.Dead.OnEnter (component, data)
+    local wargearList = t_wargearDrop
+    local validItems = {}
+    
+    local avgLevel = Heroes:GetAvgLevel()
+    
+    for k, v in pairs(wargearList) do
+        v.minLevel  = v.minLevel or 0
+        v.maxLevel  = v.maxLevel or 20
+        v.weight    = v.weight or 1
+        
+        if( avgLevel >= v.minLevel and avgLevel <= v.maxLevel)then
+            for i = 1, v.weight do
+                table.insert(validItems, v.item)
+            end
+        end
+    end
+    
+	if( table.getn(validItems) > 0 ) then
+		local itemToDrop = validItems[PC_Rand(1, table.getn(validItems))]
+		
+		World_DropWargear( ScarGameBackend.GetPlayer(1), itemToDrop, component.currentPosition)
+	else
+		AIPrint( "*** WARNING *** Could not find any wargear to drop." )
+	end
+end
+
+function Ai.Traits.DropRandomWargear.Dead.OnEnter (component, data, params)
+
+	World_GenerateAndDropWargearAtPosition(ScarGameBackend.GetPlayer(1), params.type, Heroes:GetAvgLevel(), component.currentPosition)
+end
+
+-- Mission X13-specific wargear drops
+
+function Ai.Traits.DropX13ApothWargear.Dead.OnEnter (component, data)
+		local itemToDrop = "wargear\\wargear\\campaign\\playable\\race_marine\\xp1\\weapons_melee\\sm_wp2_chainsword_l24_rare_corrupt_x13apoth"
+		World_DropWargear( ScarGameBackend.GetPlayer(1), itemToDrop, component.currentPosition)
+end
+
+function Ai.Traits.DropX13TechWargear.Dead.OnEnter (component, data)
+		local itemToDrop = "wargear\\wargear\\campaign\\playable\\race_marine\\xp1\\armour\\sm_arm_power_armour_l25_rare_corrupt_x13tech"
+		World_DropWargear( ScarGameBackend.GetPlayer(1), itemToDrop, component.currentPosition)
+end
+
+function Ai.Traits.DropX13FCWargear.Dead.OnEnter (component, data)
+		local itemToDrop = "wargear\\wargear\\campaign\\playable\\race_marine\\sm_wp2_power_axe_matchless_savagery_of_russ"
+		World_DropWargear( ScarGameBackend.GetPlayer(1), itemToDrop, component.currentPosition)
+end
+
+------------------------------------------------------------------------------------------------------
+
+function RetreatFromAttacker(component)
+
+	AIPrint( component.StateMachine:GetTimeActive(), "RetreatFromAttacker", component)
+	
+	if (SGroup_IsEmpty(component.sgroup)) then
+		AIPrint( "Can't Retreat, our group is empty")
+		return
+	end
+	
+	local playerID = Squad_GetPlayerOwner(SGroup_GetSpawnedSquadAt(component.sgroup, 1))
+	local currentPos = SGroup_GetPosition( component.sgroup )
+	
+	local sgTemp = SGroup_CreateIfNotFound( "sg_temp_RetreatFromAttacker" )
+	
+	World_GetSquadsNearPoint(playerID, sgTemp, currentPos, 50, OT_Enemy)
+	
+	if( SGroup_IsEmpty(sgTemp) ) then
+		AIPrint( "Can't Retreat, no enemies")
+		return
+	end
+	
+	local enemyPos = SGroup_GetPosition( sgTemp )
+	
+	SGroup_Clear(sgTemp)
+	World_GetSquadsNearPoint(playerID, sgTemp, currentPos, 200, OT_Ally)
+	
+	if( SGroup_IsEmpty(sgTemp) ) then
+		AIPrint( "Can't Retreat, no Friendlies")
+		return
+	end
+	
+	local enemyDir = Vector3_Sub( enemyPos, currentPos )
+	enemyDir.y = 0
+	enemyDir = Vector3_SafeNormal( enemyDir )
+	
+	local alliesDOTandPos = {}
+	
+	for iAlly = 1, SGroup_CountSpawned(sgTemp) do
+		local ally = {}
+		ally.squad = SGroup_GetSpawnedSquadAt(sgTemp, iAlly)
+		ally.pos = Squad_GetPosition(ally.squad)
+		ally.dir = Vector3_Sub( ally.pos, currentPos )
+		ally.dir.y = 0
+		ally.dir = Vector3_SafeNormal( ally.dir )
+		ally.dot = Vector3_DotProduct( ally.dir, enemyDir )
+		table.insert( alliesDOTandPos, ally )
+	end
+		
+	local bestAlly = nil
+	
+	for k, ally in pairs(alliesDOTandPos) do
+		if( bestAlly == nil or ally.dot < bestAlly.dot ) then
+			
+			local allyComponent = Ai.ComponentMananger:GetComponent(ally.squad)
+			
+			if( CanHelp(allyComponent, component ) ) then
+				bestAlly = ally
+			end
+			
+		end
+	end
+	
+	if( bestAlly == nil ) then
+		AIPrint( "Can't Retreat, no best ally")
+		return
+	end
+	
+	local v_retreat = Squad_GetPosition(bestAlly.squad)
+	
+	Cmd_Move( component.sgroup, v_retreat )
+
+end
+
+function SendHelpMeEvent(component, retreatFromPos)
+	
+	AIPrint( component.StateMachine:GetTimeActive(), "SendHelpMeEvent", component)
+	
+	local sgTemp = SGroup_CreateIfNotFound( "sg_temp_callforhelp" )
+	SGroup_Clear( sgTemp )
+	
+	-- TODO - This is place holder until we can track the position the 
+	SGroup_GetLastAttacker( component.sgroup, sgTemp )
+	
+	if( not SGroup_IsEmpty(sgTemp) ) then
+		local pos = SGroup_GetPosition( component.sgroup )
+		local enemyPos = SGroup_GetPosition( sgTemp )
+		local event = { 
+			id 		= Ai.Events.CallForHelp,
+			sender 	= component,
+			pos 	= pos,
+			radius 	= 10,
+			enemyPos= retreatFromPos,
+		}
+		
+		Ai.ComponentMananger:SendEvent( event )
+	end
+	
+	FOW_RevealSGroupOnly(component.sgroup, 30)
+	
+	SGroup_Destroy( sgTemp )
+end
+
+
+Ai.Traits.JumpMelee.activationRadius = 65 -- Activate from 75m away
+function Ai.Traits.JumpMelee.Idle.OnEnter(component, data, params)
+	local f_HideDecorator = function(gid, ind, iid)
+		UI_EnableSquadDecorator(iid, false)
+        component.hasJumped = true
+	end
+	
+    if component.hasJumped == nil then component.hasJumped = false end
+    
+    if component.hasJumped == false then
+        SGroup_ForEach(component.sgroup, f_HideDecorator)
+    end
+    
+end
+
+function Ai.Traits.JumpMelee.Idle.Update(component, data, params)
+    --check if we are in range, if so jump into combat.
+	local f_HideDecorator = function(gid, ind, iid)
+		UI_EnableSquadDecorator(iid, false)
+        component.hasJumped = true
+	end
+	
+
+	
+	local dist = 45
+	local minRange = 5
+	if (params ~= nil and params.distance ~= nil) then
+		dist = params.distance
+	end
+	if (params ~= nil and params.minRange ~= nil) then
+		minRange = params.minRange
+	end
+    local sg = SGroup_CreateIfNotFound("tempJumpTargetSG")
+    SGroup_Clear(sg)
+    World_GetSquadsNearPoint( Util_GetPlayerOwner(component.sgroup), sg, component.startingPosition, 800, OT_Enemy)
+    
+    if(Prox_AreTeamsNearMarker(HUMANS, SGroup_GetPosition(component.sgroup), ANY, dist))then   
+        local squad = SGroup_GetNonKnockedOutSquad(sg)
+        if(SGroup_Count(sg) > 0 and squad ~= nil and (not Squad_IsInfiltrated(squad)) and (not Squad_IsInHoldEntity(squad)))then
+			if World_DistanceSGroupToPoint(component.sgroup, Squad_GetPosition(squad), true) >= minRange then
+				if SGroup_ContainsBlueprints(component.sgroup, {{name = "sbps\\xp2\\campaign\\race_chaos\\army\\csm_bloodletters", count = 1}}, ANY) then
+					Cmd_SquadAbilityPos(component.sgroup, abil_camp_csm_bloodletter_teleport_target, Squad_GetPosition(squad), true)
+				else
+					Cmd_JumpToPosition(component.sgroup,  Squad_GetPosition(squad))
+				end
+				local f_HideDecorator = function(gid, ind, iid)
+					UI_EnableSquadDecorator(iid, true)
+				end
+				
+				SGroup_ForEach(component.sgroup, f_HideDecorator)
+				component.StateMachine:GotoState( "Combat", component )
+				return true
+			end
+        end        
+    end
+end
+
+function Ai.Traits.JumpMelee.Combat.Update(component, data, params)
+	
+--~ 	local f_HideDecorator = function(gid, ind, iid)
+--~ 		UI_EnableSquadDecorator(iid, false)
+--~         component.hasJumped = true
+--~ 	end
+
+	
+   if(not data.nextJump)then
+        data.nextJump = PC_Rand(25, 30)
+    end
+    
+    data.nextJump = data.nextJump - 1
+	local dist = 45
+	local minRange = 1
+	if (params ~= nil) then
+		dist = params.distance
+	end
+	if (params ~= nil and params.minRange ~= nil) then
+		minRange = params.minRange
+	end
+    
+    if(data.nextJump == 0)then   
+        local sg = SGroup_CreateIfNotFound("tempJumpTargetSG")
+        SGroup_Clear(sg)
+        World_GetSquadsNearPoint( Util_GetPlayerOwner(component.sgroup), sg, component.startingPosition, 60, OT_Enemy)
+        
+        local squad = SGroup_GetNonKnockedOutSquad(sg)
+        if(SGroup_Count(sg) > 0 and squad ~= nil and (not Squad_IsInfiltrated(squad)) and (not Squad_IsInHoldEntity(squad)))then
+			if World_DistanceSGroupToPoint(component.sgroup, Squad_GetPosition(squad), true) >= minRange then
+				if SGroup_ContainsBlueprints(component.sgroup, {{name = "sbps\\xp2\\campaign\\race_chaos\\army\\csm_bloodletters", count = 1}}, ANY) then
+					Cmd_SquadAbilityPos(component.sgroup, abil_camp_csm_bloodletter_teleport_target, Squad_GetPosition(squad), true)
+				else
+					Cmd_JumpToPosition(component.sgroup,  Squad_GetPosition(squad))
+				end
+			end
+        end
+--~         print(SGroup_ContainsBlueprints(sg_commander, {{name = "sbps\\xp2\\campaign\\race_marine\\heroes\\sm_force_commander" , count = 1}}, ANY)) 
+        data.nextJump = PC_Rand(15, 20)
+    end
+end
+
+-------------------------------------------------------------------------
+-- Entrance
+--
+-- Basic combat state, MOST units should have this.
+
+function Ai.Traits.Entrance.OnEvent.InCombat(component, event) -- can have events for when combat begins -- not sure this works currently
+
+end
+
+function Ai.Traits.Entrance.OnEvent.EnemySpotted(component, event) -- can have spotted events -- not sure this works currently
+
+end
+
+function Ai.Traits.Entrance.Combat.OnEnter(component, data)
+	print("entering combat")
+	if (component.entranceActions ~= nil) then
+		print("actions are not NIL")
+		for k, v in pairs (component.entranceActions) do
+			print("going through table")
+			if (v.TargetPlayer) then
+				print("Targetting player/attacker")
+				data.attackers = SGroup_CreateIfNotFound("sgAttackers")
+				SGroup_Clear(data.attackers)
+				SGroup_GetLastAttacker( component.sgroup, data.attackers )
+				-- if target is conscious
+				if not (SGroup_IsUnconscious(data.attackers, ALL)) then
+					Cmd_StopSquads(component.sgroup)
+					Cmd_SquadAbilitySquad(component.sgroup, getItem(v), data.attackers, true)
+				else
+					print("WARNING!!! Squad with Entrance trait is trying to cast an ability on an unconscious SGroup.")
+				end
+			else
+				print("Not targetting squad")
+				Cmd_SquadAbility(component.sgroup, getItem(v), true)
+			end
+		end
+	end
+	PrintObject(component.entranceActions)
+	fatal("Debug Path")
+end
+
+function Ai.Traits.Entrance.Idle.Update(component, data)
+	
+end
+
+function Ai.Traits.Entrance.Combat.Update(component, data)
+
+end
+
+-------------------------------------------------------------------------
+-- AttackThing
+-- Immediately try to attack a specified target
+
+--~ function Ai.Traits.AttackThing.Idle.OnEnter(component, data, params)
+--~ 	data.MoveTimer = 1
+--~ 	component.Target = nil
+--~ 	return true
+--~ end
+
+function Ai.Traits.AttackThing.Idle.Update(component, data, params)
+	
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if (data.attackTimer == nil or data.attackTimer <= 0) then
+		if params.target == nil then
+			print("No AttackThing target specified")
+		elseif(params.targetType == "sgroup") then
+			targetSGroup = SGroup_CreateIfNotFound(params.target)
+			if not SGroup_IsEmpty(targetSGroup) then
+				Cmd_Attack(component.sgroup,targetSGroup)
+			elseif SGroup_Exists("sg_allheroes") then
+				Cmd_AttackMove(component.sgroup, SGroup_FromName("sg_allheroes"))
+			end
+		elseif (params.targetType == "egroup") then
+			targetEGroup = EGroup_CreateIfNotFound(params.target)
+			if not EGroup_IsEmpty(targetEGroup) then
+				Cmd_Attack(component.sgroup,targetEGroup)
+			elseif SGroup_Exists("sg_allheroes") then
+				Cmd_AttackMove(component.sgroup, SGroup_FromName("sg_allheroes"))
+			end
+		elseif (params.targetType == "marker") then
+--~ 			print("1")
+			targetMarker = Marker_FromName(params.target, "")
+			Cmd_Move(component.sgroup,targetMarker)
+			
+		end
+		
+		data.attackTimer = 5
+	else
+		data.attackTimer = data.attackTimer - 1
+	end
+
+--~ 	ActionLogic(component, data, true)
+end
+
+function Ai.Traits.AttackThing.Combat.OnEnter (component, data, params)
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if (data.attackTimer == nil or data.attackTimer <= 0) then
+		if params.target == nil then
+			print("No AttackThing target specified")
+		elseif(params.targetType == "sgroup") then
+			targetSGroup = SGroup_CreateIfNotFound(params.target)
+			if not SGroup_IsEmpty(targetSGroup) then
+				Cmd_Attack(component.sgroup,targetSGroup)
+			elseif SGroup_Exists("sg_allheroes") then
+				Cmd_AttackMove(component.sgroup, SGroup_FromName("sg_allheroes"))
+			end
+		elseif (params.targetType == "egroup") then
+			targetEGroup = EGroup_CreateIfNotFound(params.target)
+			if not EGroup_IsEmpty(targetEGroup) then
+				Cmd_Attack(component.sgroup,targetEGroup)
+			elseif SGroup_Exists("sg_allheroes") then
+				Cmd_AttackMove(component.sgroup, SGroup_FromName("sg_allheroes"))
+			end
+		elseif (params.targetType == "marker") then
+--~ 			print("1")
+			targetMarker = Marker_FromName(params.target, "")
+			Cmd_Move(component.sgroup,targetMarker)
+			
+		end
+		
+		data.attackTimer = 5
+	else
+		data.attackTimer = data.attackTimer - 1
+	end
+end
+
+function Ai.Traits.AttackThing.Combat.Update (component, data, params)	
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if (data.attackTimer == nil or data.attackTimer <= 0) then
+		if params.target == nil then
+			print("No AttackThing target specified")
+		elseif(params.targetType == "sgroup") then
+			targetSGroup = SGroup_CreateIfNotFound(params.target)
+			if not SGroup_IsEmpty(targetSGroup) then
+				Cmd_Attack(component.sgroup,targetSGroup)
+			elseif SGroup_Exists("sg_allheroes") then
+				Cmd_AttackMove(component.sgroup, SGroup_FromName("sg_allheroes"))
+			end
+		elseif (params.targetType == "egroup") then
+			targetEGroup = EGroup_CreateIfNotFound(params.target)
+			if not EGroup_IsEmpty(targetEGroup) then
+				Cmd_Attack(component.sgroup,targetEGroup)
+			elseif SGroup_Exists("sg_allheroes") then
+				Cmd_AttackMove(component.sgroup, SGroup_FromName("sg_allheroes"))
+			end
+		elseif (params.targetType == "marker") then
+--~ 			print("1")
+			targetMarker = Marker_FromName(params.target, "")
+			Cmd_Move(component.sgroup,targetMarker)
+			
+		end
+		
+		data.attackTimer = 5
+	else
+		data.attackTimer = data.attackTimer - 1
+	end
+end
+
+
+
+---------------------------------------------------------------------------------
+-- PatrolABC
+-- Patrol a route specified by two or three markers
+
+--~ function Ai.Traits.PatrolABC.Idle.OnEnter(component, data, params)
+--~ 	data.flag = 1
+--~ 	component.StateMachine:GotoState( "Idle", component )
+--~ end
+
+function Ai.Traits.PatrolABC.Idle.OnEnter (component, data, params)
+--~ 	print("data")
+--~ 	PrintObject(data)
+	data.moving = false
+end
+
+function Ai.Traits.PatrolABC.Idle.Update(component, data, params)
+	if params == nil then
+		fatal("PatrolABC: params are nil")
+	end
+	
+	if data.waitTime == nil then
+		data.waitTime = params.waitTime
+	end
+	
+	if data.flag == nil then
+		data.flag = 1
+	end
+	
+	if data.moving == nil then
+		data.moving = false
+	end
+	
+	if data.startTimer == nil then
+		data.startTimer = false
+	end
+	
+	if (params.Patrol == nil) then params.Patrol = {} end
+	
+	----------------------------------------------------
+	-- For use with ABC params instead of Patrol table
+	if (params.A ~= nil and #params.A > 0) then
+		table.insert(params.Patrol, 1, params.A)
+		params.A = nil
+	end
+	
+	if (params.B ~= nil and #params.B > 0) then
+		table.insert(params.Patrol, 2, params.B)
+		params.B = nil
+	end
+	
+	if (params.C ~= nil and #params.C > 0) then
+		table.insert(params.Patrol, 3, params.C)
+		params.C = nil
+	end
+	----------------------------------------------------
+	
+	if (params.Patrol ~= nil and #params.Patrol > 0) then
+		local p_marker = Marker_FromName(params.Patrol[data.flag], "")
+		if (data.moving == false or data.movingTime == 0) then
+			if (params.AttackMove) then
+                Cmd_AttackMove(component.sgroup, p_marker)
+            else
+                Cmd_MoveToMarker(component.sgroup, p_marker)
+            end
+			data.moving = true
+			data.movingTime = 10
+		elseif (data.moving == true and Prox_AreSquadsNearMarker(component.sgroup, p_marker, true, 10)) then
+			data.startTimer = true
+		elseif (data.moving == true and not Prox_AreSquadsNearMarker(component.sgroup, p_marker, true, 10)) then
+			data.movingTime = data.movingTime - 1
+		end
+		
+		if (data.startTimer and data.waitTime > 0) then
+			data.waitTime = data.waitTime - 1
+		elseif (data.startTimer and data.waitTime <= 0) then
+			data.startTimer = false
+			data.moving = false
+			if (data.flag < #params.Patrol) then
+				if(params.Random)then
+					data.flag = World_GetRand(1, #params.Patrol)
+				else
+					data.flag = data.flag + 1
+				end
+			else
+				data.flag = 1
+			end
+			data.waitTime = params.waitTime
+		end
+	end
+end
+
+-------------------------------------------------------------------------
+-- Desperation
+-- Perform certain actions based on the squad's remaining health
+-- health1 is a float between 0 and 1.0. Same with health2
+-- action1 is a string (one of the following):
+-- "forceMelee", "jumpAttack", "grenade", 
+-- "ability", "abilityOnAttacker" (requires params.ability1 or params.ability2, which is an abilityID like abil_camp_npc_csm_charge)
+-- action2 is also a string. (action2 and health2 are optional. health2 MUST be less than health1.)
+-- ability1 goes with action1. ability2 goes with action2.
+
+
+function Ai.Traits.Desperation.Combat.Update (component, data, params)	
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if data.health1 == nil then
+		data.health1 = params.health1
+	end
+	
+	if data.flag == nil then
+		data.flag = 1
+	end
+	
+	if params.health1 == nil or params.action1 == nil then
+		print("health1 or action1 not specified")
+	else
+		if SGroup_GetAvgHealth(component.sgroup) <= params.health1 and data.flag == 1 then
+			data.lastAttacker = SGroup_CreateIfNotFound("sg_lastDesperationAttacker")
+			SGroup_GetLastAttacker(component.sgroup, data.lastAttacker)
+			if params.action1 == "forceMelee" then
+				if data.modifiers == nil then
+					Util_ApplyModifier(component.sgroup, "modifiers\\entity_modifiers\\speed_maximum_modifier", 1.33, MUT_Multiplication)
+					Util_ApplyModifier(component.sgroup, "modifiers\\weapon_modifiers\\damage_melee_weapon_modifier", 1.33, MUT_Multiplication)
+					data.modifiers = "applied"
+				end
+				Cmd_AttackMeleeSGroup(component.sgroup, data.lastAttacker)
+				if Prox_SGroupSGroup(component.sgroup, data.lastAttacker, PROX_CENTER) <= 2 then
+					data.flag = "action1Complete"
+				end
+				
+			elseif params.action1 == "grenade" then
+				data.flag = "action1Complete"
+				local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+				if (race == "chaos_marines") then
+					Cmd_SquadAbilitySquad(component.sgroup, abil_camp_csm_all_frag_grenade_npc, data.lastAttacker, true)
+				end
+				if (race == "orks") then
+					Cmd_SquadAbilitySquad(component.sgroup, abil_camp_ork_damage_aoe_stikkbomb_npc, data.lastAttacker, true)
+				end
+				if (race == "eldar") then
+					Cmd_SquadAbilitySquad(component.sgroup, abil_camp_eld_damage_aoe_grenade_npc, data.lastAttacker, true)
+				end
+				if (race == "space_marines") then
+					Cmd_SquadAbilitySquad(component.sgroup, abil_camp_sm_damage_aoe_grenade_npc, data.lastAttacker, true)
+				end
+				
+			elseif params.action1 == "jumpAttack" then
+				local targetPos = Util_GetPosition(data.lastAttacker)
+				Cmd_JumpToPosition(component.sgroup, targetPos)
+				if Prox_SGroupSGroup(component.sgroup, data.lastAttacker, PROX_CENTER) <= 2 then
+					data.flag = "action1Complete"
+				end
+				
+			elseif params.action1 == "ability" and params.ability1 ~= nil then
+				Cmd_SquadAbility(component.sgroup, params.ability1, true)
+				data.flag = "action1Complete"
+				
+			elseif params.action1 == "abilityOnAttacker" and params.ability1 ~= nil then
+				Cmd_SquadAbilitySquad(component.sgroup, params.ability1, data.lastAttacker, true)
+				Cmd_SquadAbilityPos(component.sgroup, params.ability1, Util_GetPosition(data.lastAttacker), true)
+				data.flag = "action1Complete"
+			end
+		end
+		
+		if params.health2 ~= nil and params.action2 ~= nil then
+			if SGroup_GetAvgHealth(component.sgroup) <= params.health2 and data.flag == "action1Complete" then
+				data.lastAttacker = SGroup_CreateIfNotFound("sg_lastDesperationAttacker")
+				SGroup_GetLastAttacker(component.sgroup, data.lastAttacker)
+				if params.action2 == "forceMelee" then
+					if data.modifiers == nil then
+						Util_ApplyModifier(component.sgroup, "modifiers\\entity_modifiers\\speed_maximum_modifier", 1.33, MUT_Multiplication)
+						Util_ApplyModifier(component.sgroup, "modifiers\\weapon_modifiers\\damage_melee_weapon_modifier", 1.33, MUT_Multiplication)
+						data.modifiers = "applied"
+					end
+					Cmd_AttackMeleeSGroup(component.sgroup, data.lastAttacker)
+					if Prox_SGroupSGroup(component.sgroup, data.lastAttacker, PROX_CENTER) <= 2 then
+						data.flag = "action2Complete"
+					end
+					
+				elseif params.action2 == "grenade" then
+					data.flag = "action2Complete"
+					local race = Player_GetRaceString(Squad_GetPlayerOwner(SGroup_GetRandomSpawnedSquad(component.sgroup)))
+					if (race == "chaos_marines") then
+						Cmd_SquadAbilitySquad(component.sgroup, abil_camp_csm_all_frag_grenade_npc, data.lastAttacker, true)
+					end
+					if (race == "orks") then
+						Cmd_SquadAbilitySquad(component.sgroup, abil_camp_ork_damage_aoe_stikkbomb_npc, data.lastAttacker, true)
+					end
+					if (race == "eldar") then
+						Cmd_SquadAbilitySquad(component.sgroup, abil_camp_eld_damage_aoe_grenade_npc, data.lastAttacker, true)
+					end
+					if (race == "space_marines") then
+							Cmd_SquadAbilitySquad(component.sgroup, abil_camp_sm_damage_aoe_grenade_npc, data.lastAttacker, true)
+					end
+					
+				elseif params.action2 == "jumpAttack" then
+					local targetPos = Util_GetPosition(data.lastAttacker)
+					Cmd_JumpToPosition(component.sgroup, targetPos)
+					if Prox_SGroupSGroup(component.sgroup, data.lastAttacker, PROX_CENTER) <= 2 then
+						data.flag = "action2Complete"
+					end
+					
+				elseif params.action2 == "ability" and params.ability2 ~= nil then
+					Cmd_SquadAbility(component.sgroup, params.ability2, true)
+					data.flag = "action2Complete"
+					
+				elseif params.action2 == "abilityOnAttacker" and params.ability2 ~= nil then
+					Cmd_SquadAbilitySquad(component.sgroup, params.ability2, data.lastAttacker, true)
+					data.flag = "action2Complete"
+				end
+			end
+		end
+	end
+end
+
+function Ai.Traits.Desperation.Idle.Update(component, data, params)
+--~ no action
+end
+
+function Ai.Traits.Desperation.Combat.OnEnter (component, data, params)
+-- no action
+end
+
+
+-------------------------------------------------------------------------
+-- DefendSGroup
+-- Tell an SGroup to defend a specified SGroup 
+-- Optionally, provide a health threshold at which the Defender will attack
+-- groupToDefend is a string: name of the group (e.g. "sg_sluggas1")
+-- health is a float between 0 and 1.0
+
+function Ai.Traits.DefendSGroup.Idle.Update(component, data, params)
+	
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if params.groupToDefend == nil then
+		print("No groupToDefend specified in DefendGroup trait")
+	else
+		data.groupToDefend = SGroup_CreateIfNotFound(params.groupToDefend)
+		data.lastAttacker = SGroup_CreateIfNotFound("sg_lastDefendGroupAttacker")
+		SGroup_GetLastAttacker(data.groupToDefend,data.lastAttacker)
+		if not SGroup_IsEmpty(data.groupToDefend) and not SGroup_IsUnconscious(data.lastAttacker,ALL) then
+			if params.health ~= nil and SGroup_GetAvgHealth(data.groupToDefend) <= params.health  and SGroup_IsUnderAttack(data.groupToDefend,ANY, 5) then
+				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+			elseif params.health == nil and SGroup_IsUnderAttack(data.groupToDefend,ANY,5) then
+				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+			end
+		end
+--~ 		data.groupToDefend = EGroup_CreateIfNotFound(params.groupToDefend)
+--~ 		data.lastAttacker = SGroup_CreateIfNotFound("sg_lastDefendGroupAttacker")
+--~ 		EGroup_GetLastAttacker(data.groupToDefend,data.lastAttacker) --- THIS FUNCTION DOES NOT EXIST. LAME!
+--~ 		if not SGroup_IsEmpty(data.groupToDefend) and not SGroup_IsUnconscious(data.lastAttacker,ALL) then
+--~ 			if params.health ~= nil and SGroup_GetAvgHealth(data.groupToDefend) <= params.health  and SGroup_IsUnderAttack(data.groupToDefend) then
+--~ 				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+--~ 			elseif params.health == nil and SGroup_IsUnderAttack(data.groupToDefend)
+--~ 				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+--~ 			end
+--~ 		end
+	end
+end
+
+function Ai.Traits.DefendSGroup.Combat.OnEnter(component, data, params)
+	
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if params.groupToDefend == nil then
+		print("No groupToDefend specified in DefendGroup trait")
+	else
+		data.groupToDefend = SGroup_CreateIfNotFound(params.groupToDefend)
+		data.lastAttacker = SGroup_CreateIfNotFound("sg_lastDefendGroupAttacker")
+		SGroup_GetLastAttacker(data.groupToDefend,data.lastAttacker)
+		if not SGroup_IsEmpty(data.groupToDefend) and not SGroup_IsUnconscious(data.lastAttacker,ALL) then
+			if params.health ~= nil and SGroup_GetAvgHealth(data.groupToDefend) <= params.health  and SGroup_IsUnderAttack(data.groupToDefend,ANY, 5) then
+				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+			elseif params.health == nil and SGroup_IsUnderAttack(data.groupToDefend,ANY,5) then
+				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+			end
+		end
+--~ 		data.groupToDefend = EGroup_CreateIfNotFound(params.groupToDefend)
+--~ 		data.lastAttacker = SGroup_CreateIfNotFound("sg_lastDefendGroupAttacker")
+--~ 		EGroup_GetLastAttacker(data.groupToDefend,data.lastAttacker) --- THIS FUNCTION DOES NOT EXIST. LAME!
+--~ 		if not SGroup_IsEmpty(data.groupToDefend) and not SGroup_IsUnconscious(data.lastAttacker,ALL) then
+--~ 			if params.health ~= nil and SGroup_GetAvgHealth(data.groupToDefend) <= params.health  and SGroup_IsUnderAttack(data.groupToDefend) then
+--~ 				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+--~ 			elseif params.health == nil and SGroup_IsUnderAttack(data.groupToDefend)
+--~ 				Cmd_AttackSGroup(component.sgroup, data.lastAttacker)
+--~ 			end
+--~ 		end
+	end
+end
+
+-------------------------------------------------------------------------
+-- FollowSGroup
+-- Tell an SGroup to follow a specified SGroup 
+-- groupToFollow is a string: name of the group (e.g. "sg_sluggas1")
+-- health is a float between 0 and 1.0
+
+function Ai.Traits.FollowSGroup.Idle.Update(component, data, params)
+	
+	if params == nil then
+		print ("params is nil")
+	end
+	
+	if params.groupToFollow == nil then
+		print("No groupToFollow specified in FollowSGroup trait")
+	else
+		data.minDistance = params.minDistance or 3
+		data.distance = params.distance or 5
+		data.groupToFollow = SGroup_CreateIfNotFound(params.groupToFollow)
+		if not SGroup_IsEmpty(data.groupToFollow) then
+--~ 			print("FollowSGroup distance is " .. Prox_SGroupSGroup(component.sgroup, data.groupToFollow, PROX_SHORTEST))
+			if Prox_SGroupSGroup(component.sgroup, data.groupToFollow, PROX_SHORTEST) > 10 or Prox_SGroupSGroup(component.sgroup, data.groupToFollow, PROX_SHORTEST) < 6 then
+				if SGroup_IsMoving(data.groupToFollow, ALL) then
+					local targetPos = Util_GetRandomPosition(data.groupToFollow, data.distance, data.minDistance)
+					Cmd_Move(component.sgroup, targetPos)
+				end
+			end
+		end
+	end
+end
+
+-------------------------------------------------------------------------
+-- FindAndReport
+--
+-- Player spotted, begin countdown, then retreat to position.
+
+function Ai.Traits.FindAndReport.OnEvent.InCombat(component, event, params)
+--~ 	fatal("player spotted")
+end
+
+function Ai.Traits.FindAndReport.Retreat(component, event, params)
+	
+end
+
+function Ai.Traits.FindAndReport.Combat.OnEnter(component, data, params)
+	if (data.hasSpottedPlayer == nil or data.hasSpottedPlayer == false) then
+		Cmd_StopSquads(component.sgroup)
+		local f = function ()
+			if (params.Marker == nil) then
+				fatal("FindAndReport trait: Marker cannot be nil")
+			else
+				local pos = Util_GetPosition(Marker_FromName(params.Marker, ""))
+				if (params.Function ~= nil) then
+					local f = params.Function
+					f(component)
+				end
+				Cmd_RetreatToLocation(component.sgroup, pos)
+			end
+		end
+		
+		data.hasSpottedPlayer = true
+		Rule_AddOneShot(f, params.Wait)
+	end
+end
+
+function Ai.Traits.FindAndReport.Idle.Update(component, data, params)
+	
+end
+
+function Ai.Traits.FindAndReport.Combat.Update(component, data, params)
+	
+end
+
+-------------------------------------------------------------------------
+-- CombatFunction
+--
+-- Call a specific function when this unit enters combat
+-- Function = function -> name of function to call when entering combat
+-- Repeat = bool -> set to true if you want this to occur everytime the squad enters combat, leave blank or false if you only want this to happen the first time
+
+function Ai.Traits.CombatFunction.OnEvent.InCombat(component, event, params)
+--~ 	fatal("player spotted")
+end
+
+function Ai.Traits.CombatFunction.Retreat(component, event, params)
+	
+end
+
+function Ai.Traits.CombatFunction.Combat.OnEnter(component, data, params)
+	if (data.hasSpottedPlayer == nil or data.hasSpottedPlayer == false) then
+		Cmd_StopSquads(component.sgroup)
+		
+		if (params.Function ~= nil) then
+			local f = params.Function
+			f(component)
+		end
+		
+		if (params.Repeat == nil or not params.Repeat) then
+			data.hasSpottedPlayer = true
+		end
+	end
+end
+
+function Ai.Traits.CombatFunction.Idle.Update(component, data, params)
+	
+end
+
+function Ai.Traits.CombatFunction.Combat.Update(component, data, params)
+	
+end
+
+
+---------------------------------------------------------------------------------
+-- JumpPatrol
+-- Intended to be used on xp2_c_convoy mission, and instead of the patrol trait
+
+function Ai.Traits.JumpPatrol.Idle.OnEnter (component, data, params)
+	print("data")
+	PrintObject(data)
+	data.moving = false
+end
+
+function Ai.Traits.JumpPatrol.Idle.Update(component, data, params)
+	if params == nil then
+		fatal("JumpPatrol: params are nil")
+	end
+	
+	if data.waitTime == nil then
+		data.waitTime = params.waitTime
+	end
+	
+	if data.flag == nil then
+		data.flag = 1
+	end
+	
+	if data.moving == nil then
+		data.moving = false
+	end
+	
+	if data.startTimer == nil then
+		data.startTimer = false
+	end
+	
+	if (params.Patrol == nil) then params.Patrol = {} end
+
+	----------------------------------------------------
+	
+	if (params.Patrol ~= nil and #params.Patrol > 0) then
+		local p_marker = Marker_FromName(params.Patrol[data.flag][1], "")
+        local jumpTo = params.Patrol[data.flag][2]
+        local p_jumpMarker = nil
+        print("jumpTo")
+        print(jumpTo)
+        if (jumpTo ~= nil) then
+            p_jumpMarker = Marker_FromName(jumpTo, "")
+		end
+        if (data.moving == false or data.movingTime == 0) then
+			Cmd_MoveToMarker(component.sgroup, p_marker)
+			data.moving = true
+			data.movingTime = 10
+		elseif (data.moving == true and Prox_AreSquadsNearMarker(component.sgroup, p_marker, true, 10)) then
+			if (p_jumpMarker ~= nil) then
+                Cmd_JumpToPosition(component.sgroup, p_jumpMarker)
+            end
+            data.startTimer = true
+		elseif (data.moving == true and not Prox_AreSquadsNearMarker(component.sgroup, p_marker, true, 10)) then
+			data.movingTime = data.movingTime - 1
+		end
+		
+		if (data.startTimer and data.waitTime > 0) then
+			data.waitTime = data.waitTime - 1
+		elseif (data.startTimer and data.waitTime <= 0) then
+			data.startTimer = false
+			data.moving = false
+			if (data.flag < #params.Patrol) then
+				data.flag = data.flag + 1
+			else
+				data.flag = 1
+			end
+			data.waitTime = params.waitTime
+		end
+	end
+end
+
+
+-------------------------------------------------------------------------
+-- ChangeStance
+-- Change the squad's stance to either melee or ranged
+
+function Ai.Traits.ChangeStance.Idle.OnEnter(component, data, params)
+	if params.Stance ~=  nil then
+		if params.Stance == "Ranged" then
+			Cmd_SquadSetRangedStance(component.sgroup)
+		elseif params.Stance == "Melee" then
+			Cmd_SquadSetMeleeStance(component.sgroup)
+		end
+	end
+	return true
+end
+
+
+----------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-- Unload
+-- Units will garrison a nearby structure (if one can be found) as soon as
+-- they spawn, then get out of the building when players are near and attack
+-- Parameters are marker TriggerMarker, int Range, 
+-- Optional parameter position Destination
+
+function Ai.Traits.Unload.Idle.OnEnter(component, data)
+	if SGroup_CountDeSpawned(component.sgroup) ~= 0 then
+		return false
+	end
+	local squad = SGroup_GetSpawnedSquadAt(component.sgroup, 1)
+	local raceName = Squad_GetPlayerOwner(squad)
+	local race = Player_GetRace(raceName)
+	
+	if race == "tyranids" then
+		return false
+	else
+		Util_GarrisonNearbyBuilding(component.sgroup, SGroup_GetPosition(component.sgroup), 20, true)
+	end
+	return false
+end
+
+function Ai.Traits.Unload.Combat.Update(component, data, params)
+	
+	if SGroup_IsInHoldEntity(component.sgroup, ANY) then
+		if params.TriggerMarker ~= nil then
+			if params.Range == nil then params.Range = Marker_GetProximityRadius(params.TriggerMarker) end
+			Team_GetAllSquadsNearMarker(HUMANS, SGroup_CreateIfNotFound("sg_TempUnloadGroup"), params.TriggerMarker, params.Range)
+			if SGroup_Count(SGroup_FromName("sg_TempUnloadGroup")) > 0 then
+				if params.Destination == nil then params.Destination = SGroup_GetPosition(SGroup_FromName("sg_TempUnloadGroup")) end
+				SGroup_Eject(component.sgroup, params.Destination)
+				Cmd_Attack(component.sgroup, SGroup_FromName("sg_TempUnloadGroup"), true)
+			end
+		end
+	end
+	
+end
+
+-------------------------------------------------------------------------
+-- AntiMelee
+-- Unit will trigger an ability if any of its last attackers are very nearby (likely in melee)
+-- Required parameter Ability; optional parameter Range; optional parameter waitTime (default is 5 seconds between each use)
+
+function Ai.Traits.AntiMelee.Combat.Update(component, data, params)
+	if data.countDown == nil then
+		data.countDown = 3
+	else
+		data.countDown = data.countDown - 1
+	end
+
+	if data.countDown <= 0 then
+		if params.ability == nil then
+			fatal("SCAR trait 'AntiMelee' requires parameter 'ability'")
+		end
+		local sg_AntiMeleeSquads = SGroup_CreateIfNotFound("sg_AntiMeleeSquads")
+		local sg_AntiMeleeSquads_single = SGroup_CreateIfNotFound("sg_AntiMeleeSquads_single")
+		local range = params.Range or 5
+		local flag = false
+		Squad_GetLastAttackers(SGroup_GetSpawnedSquadAt(component.sgroup,1), sg_AntiMeleeSquads, 5)
+		
+--~ 		print("ANTIMELEE: count of sg_AntiMeleeSquads is " .. SGroup_Count(sg_AntiMeleeSquads))
+		
+		-- Scan the last attacker squads to see if any one is close
+		local distanceCheck = function(groupid, itemindex, itemid)
+			SGroup_Clear(sg_AntiMeleeSquads_single)
+			SGroup_Add(sg_AntiMeleeSquads_single, itemid)
+			if not SGroup_IsEmpty(sg_AntiMeleeSquads_single) and not SGroup_IsEmpty(component.sgroup) then
+				if SGroup_CountSpawned(component.sgroup) > 0 and SGroup_CountSpawned(sg_AntiMeleeSquads_single) > 0 then
+					if Prox_SGroupSGroup(component.sgroup, sg_AntiMeleeSquads_single, PROX_SHORTEST) <= range then 
+						flag = true
+					end
+				end
+			end
+			return false
+		end
+		
+		if not SGroup_IsEmpty(sg_AntiMeleeSquads) and SGroup_CountSpawned(sg_AntiMeleeSquads) > 0 then
+			SGroup_ForEach(sg_AntiMeleeSquads, distanceCheck)
+		end
+
+		if flag == true then
+			Cmd_SquadAbility(component.sgroup, params.ability, true)
+			SGroup_Destroy(sg_AntiMeleeSquads)
+			SGroup_Destroy(sg_AntiMeleeSquads_single)
+			data.countDown = params.waitTime or 5
+		end
+		
+	end
+end
+
+-------------------------------------------------------------------------
+-- InstaWorship
+-- For NPC Heretics
+function Ai.Traits.InstaWorship.Idle.OnEnter(component, data, params)
+	Cmd_SquadAbility(component.sgroup, abil_camp_csm_heretic_worship_npc, true)
+end
+
+
+-------------------------------------------------------------------------
+-- MakeAmbient
+-- Disable decorators and set squads non-selectable
+function Ai.Traits.MakeAmbient.Idle.OnEnter(component, data, params)
+	SGroup_SetSelectable(component.sgroup, false)
+	for i = 1, SGroup_Count(component.sgroup) do
+		UI_EnableSquadDecorator(SGroup_GetSpawnedSquadAt(component.sgroup, i), false)
+	end
+end

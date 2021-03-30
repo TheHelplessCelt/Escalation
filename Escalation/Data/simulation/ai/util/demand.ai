@@ -1,0 +1,308 @@
+import "Util/lua_consts.ai"
+
+--? @group Command
+
+s_squad_demand = {}
+
+------------------------------------------------------------------------------------------------------------
+-- 
+
+------------------------------------------------------------------------------------------------------------
+-- list of the different types of purchases (used with SetSquadDemand function)
+PURCHASETYPE_SPAWN = 0
+PURCHASETYPE_ABILITY = 1
+PURCHASETYPE_REINFORCE = 2
+PURCHASETYPE_RESURRECT = 3
+
+function ResetDemand()
+	s_squad_demand = {}
+end
+
+--? @shortdesc Sets the final demand for this squad
+--? @args PropertyBagGroupID sbpid, Number demand
+--? @result Void
+function SetSquadDemand(sbpid, demandvar, purchase_type )
+	s_squad_demand[ sbpid ] = {demand=demandvar, purchaseType = purchase_type}
+end
+
+--? @shortdesc Gets the final demand for this squad
+--? @args PropertyBagGroupID sbpid
+--? @result Number the demand for this squad
+function GetSquadDemand( sbpid )
+	local demand = s_squad_demand[ sbpid ].demand;
+	if( demand == nil ) then
+		return 0
+	else
+		return demand
+	end
+end
+
+--? @shortdesc Return the squad with the highest demand
+--? @args 
+--? @result Returns the best squad-pbg and its demand
+function HighestSquadDemand( demand_variance )
+	
+	local choice_list = {}
+	local counter=1
+
+	-- convert this table to be indexed
+	for pbg,entry_tbl in pairs(s_squad_demand) do
+		choice_list[counter] = {pbg, entry_tbl.demand, entry_tbl.purchaseType}
+		counter = counter+1
+	end
+
+	aitrace("HighestSquadDemand: TableSize:"..table.getn(choice_list))
+	
+	
+	-- sort it
+	function sort_func(a,b)
+		return a[2]>b[2]
+	end
+	table.sort(choice_list, sort_func )
+	
+	-- get the best and first item in the list
+	local index,best_choice = next(choice_list)
+	if (best_choice==nil) then
+		aitrace("HighestSquadDemand: no choices found!")
+		return nil
+	end
+	
+	local highest_demand = best_choice[2]
+	
+	if (demand_variance == nil) then
+		demand_variance = 0
+	end
+	
+	aitrace("Demand Variance %:"..demand_variance )
+	local demand_dec_range = highest_demand * demand_variance
+	
+	-- determine the range determined by the passed in variance
+	local min_variance_range = highest_demand - demand_dec_range
+	min_variance_range = math.max( min_variance_range, 0 )
+	
+	aitrace("Demand Range:"..min_variance_range.."->"..highest_demand)
+	
+	local outchoicelist = {}
+	
+	local num_choices=0
+	-- lets determine how many of these units are within
+	-- our demand variance range
+	for index,choice in pairs(choice_list) do
+		if (choice[2] >= min_variance_range) then
+			num_choices = num_choices+1
+			outchoicelist[num_choices] = choice
+		else
+			break
+		end
+	end
+	
+	return outchoicelist
+end
+
+
+-- utility function that determines the amount of time it will take to get the passed in resources
+-- returns ETA, RequisitionETA, PowerETA
+function GetETAFromCost( resCost, availableResources )
+
+	-- determine how much resources we need to buy this item
+	local needRes
+	if (availableResources) then
+		needRes = availableResources
+	else
+		needRes = cache.resources
+	end
+	
+	local resRate = cache.resources_rate
+	
+	-- the amount more resources we need
+	needRes = ResourceAmount_Subtract( resCost, needRes )
+	
+	-- if need a resource - determine how much time given current rates it will take to get it
+	local timeReq = 0
+	if (needRes.requisition > 0) then
+		local rr = resRate.requisition
+		if (rr == 0) then
+			timeReq = 11111
+		else
+			timeReq = 60 * needRes.requisition / (resRate.requisition)
+		end
+	end
+	local timePow = 0
+	if (needRes.power > 0) then
+		local rr = resRate.power
+		if (rr == 0) then
+			timePow = 11111
+		else
+			timePow = 60 * needRes.power / (resRate.power)
+		end
+	end
+	
+	-- return the largest of these three values
+	return math.max( timeReq, timePow ), timeReq, timePow
+
+end
+
+-- determine the ETA for this squadblueprint
+function GetUnitETA( pbg, availableResources )
+
+	-- get cost of this item
+	local unitRes = SquadStats_GetCost( AI_GetPlayer(), pbg )
+	
+	-- determine its ETA given current rates and money
+	return GetETAFromCost( unitRes, availableResources )
+	
+end
+
+function GetStructureETA( pbg, availableResources )
+
+	local resCost = AIPlayer_GetStructureCost( s_self_modplayer, pbg )
+	
+	return GetETAFromCost( resCost, availableResources );
+	
+end
+
+function GetProductionETA( production_type, pbg, availableResources )
+
+	local resCost = AIPlayer_GetProductionCost( s_self_modplayer, production_type, pbg )
+	
+	local costtext = res_to_str( resCost )
+	
+	return GetETAFromCost( resCost, availableResources );
+	
+end
+
+---------------------------------------------------------------------------
+-- Determine Team Relative Fair Sharing Values
+-- given a desired portion of a player's fair share, (e.g., 100% ownership percentage means they own all of their equal share), 
+-- returns the equivalent value when there are num_teams in play (e.g., if we wanted 100% of our fair share, then in a 3 player match,
+-- we should own 33% of the total). 
+function GetTeamRelativeFairShareValue(fairshare_value, num_teams)
+	local num_teams1 = math.max(1, num_teams)
+
+	return (fairshare_value / num_teams1)
+end
+
+
+---------------------------------------------------------------------------
+
+function Demand_UpdateAICombatRatings( )
+
+	aipushtrace("Demand_UpdateAICombatRatings")
+	
+	-- this goes through all the active/inactive tasks that effect the class ratings and counts them in
+	Task_CalcInTaskCombatRating( s_selfplayer )
+
+	aipoptrace()
+end
+
+---------------------------------------------------------------------------
+--
+
+function GetSquadUrgentNeedMultiplier()
+	local captured_threshold_40 = GetTeamRelativeFairShareValue(2*0.4, cache.num_teams )
+
+	if (cache.percentage_pts_captured < captured_threshold_40 and 
+		cache.current_population_personnel < (cache.max_population_personnel * 0.4) and 
+		cache.military_percent_value > 0.8 and
+		cache.tech_tier_level <= 1) then
+		
+		if (cache.max_population_personnel > 0) then
+			local popPercentage = cache.current_population_personnel / cache.max_population_personnel
+			
+			return math.max(1, 5 * math.max(0, 0.6 - popPercentage)) 
+		else
+			return 2
+		end
+	end
+
+	return 1
+end
+
+--------------------------------------------------------------------------------------------
+-- Take the AI demands and determine how the passed in Squad rates (return a demand value)
+
+
+-- takes the class/anticlass totals to how this unit maps to the needs of this AI
+function CalcSquadDemand( squadPBG )
+	local total_demand = PlayerStats_EvaluateSquadPurchaseCombatRatingDiff(squadPBG, s_self_modplayer, cache.primary_enemy_team)
+
+	-- boost demand for unbuilt unit types if there is a diversity demand 
+	if (s_personality.demand_diversity_bonus_multiplier > 0.0) then
+		local unit_count = UtilPBG_CountAlive(squadPBG)
+		local other_units_count = cache.military_count - unit_count
+
+		total_demand = total_demand + (total_demand * s_personality.demand_diversity_bonus_multiplier * (other_units_count - unit_count))
+	end
+	
+	return total_demand;
+end
+
+-- takes the class/anticlass totals to how this proposed upgrade for the given squad maps to the needs of this AI
+function CalcSquadUpgradeDemand( upgradePBG, aiSquad )
+	local total_demand = PlayerStats_EvaluateSquadUpgradePurchaseCombatRatingDiff(aiSquad, upgradePBG, s_self_modplayer, cache.primary_enemy_team)
+
+	return total_demand;
+end
+
+
+-----------------------------------
+-- DEMAND DEBUG
+
+function CreateDemandsDebugString(demand_filter_canproduce)
+
+	local result_string = "Debugging Player "..s_selfplayerid.." (Build Demands)\n"
+
+	--RATINGS
+	result_string = result_string .. "PBGName \t\t\tTotal \tProduce Now/Ever \tBuildTime \tETA \n" 
+	result_string = result_string .. "========\t\t\t======\t=================\t==========\t====\n" 
+	
+	-- print demands for each squad
+	local buildableTotal = AIProduction_GetBuildableSquadCount( s_selfplayer )
+	for i=0, buildableTotal-1 do
+		local pbg = AIProduction_GetBuildableSquadAt( s_selfplayer, i )
+
+		local canproduceever = 0
+		if (AIProduction_CanProduce( s_selfplayer, PITEM_Spawn, pbg )) then
+			canproduceever = 1
+		end
+		
+		if (canproduceever == 1 or demand_filter_canproduce==false) then
+		
+			local canproducenow = 0
+			if (AIProduction_CanProduceNow( s_selfplayer, PITEM_Spawn, pbg )) then
+				canproducenow = 1
+			end
+			
+			local pbgname = PBG_GetName( pbg )
+			local a,b = string.find( pbgname, "sbps\\")
+			if (b) then
+				pbgname = string.sub( pbgname, b+1 )
+			end
+			
+			-- Name
+			result_string = result_string .. pbgname .. "\t\t\t"
+			
+			-- Squad demand
+			result_string = result_string .. string.format( "%.0f", CalcSquadDemand( pbg )) .. "\t"
+			
+			-- CanProduce
+			result_string = result_string .. string.format( "%.0f / %.0f", canproducenow, canproduceever ) .. "\t"
+			
+			-- Buildticks
+			result_string = result_string .. string.format( "%.0f", SquadStats_GetBuildTicks( AI_GetPlayer(), pbg ) / 8 ) .. "\t"
+			
+			-- ETA
+			result_string = result_string .. string.format( "%.0f", GetUnitETA( pbg ) ) .. "\t"
+					
+	
+			-- Prereq Info
+	
+			result_string = result_string .. "\n"
+		end
+		
+	end
+
+	return result_string
+end
+
+

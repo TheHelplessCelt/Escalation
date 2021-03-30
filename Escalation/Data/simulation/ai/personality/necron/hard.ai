@@ -1,0 +1,6 @@
+import('personality/base_hard.ai')
+import('personality/necron/buildorder_lib.ai')
+
+-- randomly choose a build order from the given list defined in the buildorders lib 
+s_personality.buildorder = RandomlyChooseBuildorder( necron_buildorder )
+
