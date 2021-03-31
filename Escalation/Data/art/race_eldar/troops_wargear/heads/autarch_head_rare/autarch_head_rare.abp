@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "autarch_head_rare",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}
