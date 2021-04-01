@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "ig_armour_common_A",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

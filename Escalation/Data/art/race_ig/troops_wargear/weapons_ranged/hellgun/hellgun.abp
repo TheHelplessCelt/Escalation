@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "hellgun",
+    "hellgun_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

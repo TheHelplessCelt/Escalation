@@ -37,8 +37,8 @@ FXLODSettings =
 	},
 	{
 		settingName="ultra",
-		nearDist= 46,
-		farDist= 100,
+		nearDist= 60,
+		farDist= 200,
 		renderLimit= 2000, 
 		objLimit= 10000,
 		maxLOD="high",

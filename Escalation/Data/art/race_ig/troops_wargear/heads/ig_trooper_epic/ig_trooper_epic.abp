@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "ig_trooper_epic",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}
