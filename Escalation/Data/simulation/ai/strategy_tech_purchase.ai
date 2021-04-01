@@ -1,0 +1,363 @@
+--
+-- This file is responsible for purchasing tech (this includes structures, upgrades, etc) 
+-- These are usually items used to unlock military units or their abilities.
+--
+
+import("rules_tech_purchase.ai")
+
+strategy_tech_purchase = {}
+
+-- purchase variables - help to determine how long we will wait for something good
+s_eta_structure_wait_time = 120
+s_eta_production_wait_time = 90
+
+-- types for tech demand
+DEMAND_Building = 1
+DEMAND_Upgrade = 2
+
+DEMAND_NeverBuild = -99999
+
+
+-----------------------------------------------
+-- INIT TECH PURCHASE SYSTEM
+
+function strategy_tech_purchase.init()
+	
+	print("strategy_tech_purchase.init")
+		
+	s_tech_tier_upgrades = s_personality.tech_tier_upgrades
+
+	s_eta_structure_wait_time = s_personality.eta_structure_wait_time
+	s_eta_production_wait_time = s_personality.eta_production_wait_time
+	
+	s_techDemand = {}
+end
+
+function strategy_tech_purchase.simulate_pre()
+	
+end
+
+function Util_CountTechTierUpgradeRequests( )
+	
+	local count = 0
+	for k,v in pairs(s_tech_tier_upgrades) do
+		count = count + Task_CountPBG( s_selfplayer, v.pbg )
+	end
+	
+	return count
+end
+
+function CalculateTechETA()
+	
+	aitrace("CalculateTechETA")
+	
+	local offset_eta = 0
+	-- if we have some military units then we have some safe-guard so we can increase it slightly
+	if (cache.military_count > 3) then
+		offset_eta = offset_eta + (cache.military_count-3)*5
+	end
+
+	aitrace("OffsetETA:"..offset_eta)
+	
+	-- get the base rate from the personality file
+	s_eta_structure_wait_time = s_personality.eta_structure_wait_time + offset_eta
+	s_eta_production_wait_time = s_personality.eta_production_wait_time + offset_eta
+	
+	aitrace("NewTechETA:"..s_eta_structure_wait_time)
+	aitrace("NewProductionETA:"..s_eta_production_wait_time)
+end
+
+-- rules to determine what structure to build
+function MilitaryStructureDemand()
+
+	-- is building disabled?
+	if (s_components[COMPONENT_BuildStructures] == false) then
+		aitrace("BuildStructures Component Disabled!")
+		return
+	end
+
+	-----------------------------------------------------------------------------
+	--
+	local bcount = AIProduction_GetBuildableBuildingCount( s_selfplayer )-1
+	aitrace("Considering "..bcount.." military/tech buildings for purchase")
+	for i=0, bcount do
+ 		
+		-- go through each building we can get and determine its priority
+		local pbg = AIProduction_GetBuildableBuildingAt( s_selfplayer, i )
+		
+		local spawnCount = PBG_ProductionItemCount( pbg, PITEM_Spawn )
+		local upgradeCount = PBG_ProductionItemCount( pbg, PITEM_Upgrade )
+		local defPriority = PBG_GetDefencePriority( pbg )
+		
+		--aitrace("SpawnCount:"..spawnCount.." UpgradeCount:"..upgradeCount.."Def:"..defPriority.." Name:"..PBG_GetName( pbg ) )
+		
+		-- don't consider securing buildings or defence buildings - they are done elsewhere
+		if (defPriority==0 and (spawnCount>0 or upgradeCount>0)) then
+		
+			-- get the total number of current structures plus those that are requested
+			local structureCount = UtilPBG_CountTotal( pbg )
+			aitrace("Name:"..PBG_GetName( pbg ).." StructureCount:"..structureCount)
+	
+			if (structureCount <= 0) then
+				
+				if (Construction_CanConstruct(s_selfplayer, pbg)) then
+					
+					local calcbuildstyle=BS_NearBase
+					
+					local techdemand = AI_RandRange( 1, 10 )
+					
+					local structureETA = GetStructureETA( pbg )
+					aitrace("CAN CONSTRUCT:"..PBG_GetName( pbg ).. "Demand:"..techdemand.." ETA:"..structureETA )
+					
+					if (structureETA < s_eta_structure_wait_time ) then
+					
+						local demand_offset = 0
+						-- test special rules for the given race
+						if (s_special_techtree_rules) then
+							demand_offset = s_special_techtree_rules(pbg)
+							aitrace("DemandOffset:"..demand_offset)
+						end
+						
+						s_techDemand[ pbg ] = {demand=techdemand+demand_offset, buildstyle = calcbuildstyle, demand_type = DEMAND_Building }
+					else
+						aitrace("SKIPPING BECAUSE OF ETA:"..PBG_GetName( pbg ).." Limit:"..s_eta_structure_wait_time )
+					end
+					
+				
+				else
+					aitrace("CANNOT CONSTRUCT:"..PBG_GetName( pbg ) )
+				end
+			
+			else
+				aitrace("ALREADY HAVE ENOUGH:"..PBG_GetName( pbg ) )
+			end
+		end
+ 	end
+end
+
+function UpgradeDemand()
+
+	-- determine how many requests for upgrades are outstanding. We shouldn't request another 
+	-- upgrade unless the required building doesn't already have an outstanding request 
+	
+	local ucount = AIProduction_GetProductionItemCount( s_selfplayer, PITEM_Upgrade ) - 1
+	aitrace("UpgradeDemand: Considering "..ucount.." upgrades!" )
+	for i=0, ucount do
+		local upgradePBG = AIProduction_GetProductionItemAt( s_selfplayer, PITEM_Upgrade, i )
+		
+		local numRequested = Task_CountActivePBG( s_selfplayer, upgradePBG, false )
+		
+		-- extract info about this upgrade, does it match our demands/ strategies
+		if (numRequested == 0 and AIProduction_CanNonSquadProduce( s_selfplayer, PITEM_Upgrade, upgradePBG )) then
+						
+			local productionETA = GetProductionETA( PITEM_Upgrade, upgradePBG )
+			aitrace("UpgradeList"..i..":"..PBG_GetName( upgradePBG ).." ETA:"..productionETA)
+			
+			if (productionETA < s_eta_production_wait_time) then
+				
+				local demandoffset = 0
+				if (s_special_upgrade_rules) then
+					demandoffset = s_special_upgrade_rules( upgradePBG )
+					aitrace("DemandOffset:"..demandoffset)
+				end
+				local demandval = AI_RandRange(1,5) + demandoffset
+				aitrace("UpgDemand:"..demandval )
+				-- currently random, will definitely need rules for each upgrade
+				s_techDemand[ upgradePBG ] = {demand=demandval, buildstyle = nil, demand_type = DEMAND_Upgrade }
+			else
+				aitrace("--Skipping because ETA is too long")
+			end
+		end
+	end	
+end
+
+
+function TechTierUpgradeDemand()
+
+	local ucount = table.getn(s_tech_tier_upgrades)
+	aitrace("TechTierUpgradeDemand: Considering "..ucount.." upgrades!" )
+
+	-- is upgrading disabled?
+	if (s_components[COMPONENT_BuildResearch] == false) then
+		aitrace("BuildResearch Component Disabled!")
+		return
+	end
+
+	if (cache.tech_tier_level > table.getn(s_tech_tier_upgrades)) then
+		aitrace("MaxTechTierRule: Hit the maximum tech level: "..cache.tech_tier_level)
+		return
+	end
+	
+	local upgradeRequests = Util_CountTechTierUpgradeRequests()
+	aitrace("TechTierUpgradeReq:"..upgradeRequests)
+	if (upgradeRequests >= 1) then
+		aitrace("Reached tech tier upgrade request limit of: 1")
+		return
+	end
+	
+	local res_tasks = Task_CountInGroup( s_selfplayer, TGROUP_ResourceAddOns )
+	if (res_tasks > 0) then	
+		aitrace("ResourceBuildRule:Only one CapturePointConstruction build task at a time: "..res_tasks)
+		return
+	end
+
+	dbAssert(cache.tech_tier_level > 0 and cache.tech_tier_level <= table.getn(s_tech_tier_upgrades))
+	
+	-- determine if we can build these upgrades
+	local upgrade = s_tech_tier_upgrades[cache.tech_tier_level]
+
+	if (upgrade and upgrade.pbg) then
+		local upgradePBG = upgrade.pbg
+			
+		local hit_limit_cap = false
+		if (UtilPBG_CountTotal( upgradePBG ) > 1) then
+			aitrace("HitLimitCap:"..PBG_GetName( upgradePBG ).." Limit: 1, Count:"..counttotal)
+			hit_limit_cap = true
+		end
+			
+		if (not hit_limit_cap) then
+				
+			local numRequested = Task_CountActivePBG( s_selfplayer, upgradePBG, false )
+		
+			-- extract info about this upgrade, does it match our demands/ strategies
+			if (numRequested == 0 and AIProduction_CanNonSquadProduce( s_selfplayer, PITEM_Upgrade, upgradePBG )) then
+				local productionETA = GetProductionETA( PITEM_Upgrade, upgradePBG )
+				aitrace("UpgradeList:"..tostring(cache.tech_tier_level)..":"..PBG_GetName( upgradePBG ).." ETA:"..productionETA)
+			
+				if (productionETA < s_eta_production_wait_time) then
+					if (upgrade.condition_func==nil or upgrade.condition_func()) then
+						local demandoffset = 0
+						if (s_special_techtree_rules) then
+							demandoffset = s_special_techtree_rules( upgradePBG )
+							aitrace("DemandOffset:"..demandoffset)
+						end
+
+						local demandval = AI_RandRange(1,5) + demandoffset
+						aitrace("UpgDemand:"..demandval )
+						
+						-- currently random, will definitely need rules for each upgrade
+						s_techDemand[ upgradePBG ] = {demand=demandval, buildstyle = nil, demand_type = DEMAND_Upgrade }
+					else
+						aitrace("--Skipping because 'condition_func()' failed.")
+					end
+				else
+					aitrace("--Skipping because ETA is too long")
+				end
+			end
+		else
+			aitrace("CANNOT BUILD TECH-TIER UPGRADE:"..PBG_GetName( structure.pbg ) )
+		end
+	end	
+end
+
+
+function HighestTechDemand()
+	
+	local best_pbg = nil
+	local highest_demand_tbl = {demand=-100, buildstyle=nil, demand_type = nil}
+
+	for pbg,demTbl in pairs(s_techDemand) do
+		if (pbg and demTbl ~= false) then
+			
+			-- other considerations (?)
+			
+			if (demTbl.demand > highest_demand_tbl.demand) then
+				best_pbg = pbg
+				highest_demand_tbl = demTbl
+			end
+			
+		end
+	end
+	
+	return best_pbg, highest_demand_tbl
+
+end
+
+
+function strategy_tech_purchase.do_purchase( availableResources )
+
+	aipushtrace("StrategyTechPurchase")
+	
+	AIProfile_Marker2("AITechPurchase")
+	
+	-- determine what building/ tech we should get next
+	-- go through each option and choose the one with the highest demand
+	
+	-- if we have builders and our demand for teching up is large enough then lets
+	-- see what we should purchase next, we may want to include
+	
+	-- reset tech demand
+	clear_kv_list(s_techDemand)
+
+	-- is base under attack? if it is we should not build here, unless.. we don't have a spawner or we don't have any military to deal with it (then do as we use to)
+	if (cache.threat_at_base > 50 and cache.military_value > cache.threat_at_base/2 ) then
+		aitrace("No tech building because we are underattack:")
+		aipoptrace();
+		return
+	end
+	
+	CalculateTechETA()
+	
+	-- 1. The AI's resource rates should determine the number of spawner buildings it should have
+	-- With a lower rate the less buildings we would want. If our rate is lowered, we might even
+	-- want to sell our buildings to give some money back to the player.
+	
+	-- NOTE: order is important since s_techDemand[PBG] may have different demand values (i.e., depending on demand calculation)
+	MilitaryStructureDemand()
+	UpgradeDemand()
+	TechTierUpgradeDemand()
+		
+	-- rule: make sure to have buildings so we can build more and better units.
+	-- should look at our resource rates, economy, and military to determine what
+	-- buildings to make
+	
+	local pbg, demandTbl = HighestTechDemand()
+		
+	if (pbg) then
+	
+		aitrace("Highest demand:"..PBG_GetName( pbg ) .." Demand:".. demandTbl.demand .. " Demand-Type:" .. demandTbl.demand_type );
+		
+		local unitCost
+		if (demandTbl.demand_type == DEMAND_Building) then
+			unitCost = AIPlayer_GetStructureCost( s_self_modplayer, pbg )
+		elseif (demandTbl.demand_type == DEMAND_Upgrade) then
+			unitCost = AIPlayer_GetProductionCost( s_self_modplayer, PITEM_Upgrade, pbg )
+		end
+
+		-- determine if this can purchase this item
+		if (not ResourceAmount_Has( availableResources, unitCost )) then
+			aitrace("Not enough moola - locking resources!")
+			aipoptrace()
+			return false, unitCost
+		end
+		
+		if (demandTbl.demand_type == DEMAND_Upgrade) then
+			-- this checks all the production-channels and counts all the requests in each of these channels
+			-- this returns the min-number of items in all of these channels
+			local prevReq = PBG_GetNumRequestsForProducer( s_selfplayer, PITEM_Upgrade, pbg )
+			
+			if (prevReq > 0) then
+				aitrace("Stalling upgrade because of lack of production channels:"..PBG_GetName(pbg))
+				aipoptrace()
+				return false, unitCost
+			end
+		end
+		
+		-- request 
+		if (demandTbl.demand_type == DEMAND_Building) then
+			Request_Construction( s_selfplayer, TGROUP_Tech, TPRIORITY_Tech, pbg, demandTbl.buildstyle )
+		elseif (demandTbl.demand_type == DEMAND_Upgrade) then
+			Request_Production( s_selfplayer, TGROUP_Tech, TPRIORITY_Tech, PITEM_Upgrade, pbg )
+		end
+		
+		aipoptrace()
+		return true, unitCost
+		
+	end
+	
+	aipoptrace()
+	
+	return false
+end
+
+

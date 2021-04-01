@@ -1,0 +1,543 @@
+
+--utility
+
+import("Player.scar")
+import("Entity.scar")
+import("Squad.scar")
+import("Groups.scar")
+
+import( 'util/lua_consts.ai' )
+import( 'util/utility.ai' )
+import( 'util/debug.ai' )
+import( 'util/army_eval.ai' )
+import( 'util/dbview.ai' )
+import( 'util/budget.ai' )
+import( 'util/count_util.ai' )
+
+
+import( 'personality.ai' )
+import( 'cache.ai' )
+import( 'state_analysis.ai' )
+import( 'strategy_buildorder.ai' )
+import( 'strategy_resourcing.ai' )
+import( 'strategy_military.ai' )
+import( 'strategy_unit_purchase.ai' )
+import( 'strategy_tech_purchase.ai' )
+import( 'strategy_defence_purchase.ai' )
+import( 'strategy_addon_purchase.ai' )
+import( 'strategy_designer.ai' )
+import( 'player_abilities.ai' )
+import( 'targets/targets.ai' )
+import( 'tactics/tactics.ai' )
+import( 'tactics/player-tactics.ai' )
+
+import( 'ai-view.ai' )
+
+------------------------------------------------------------
+-- globals
+s_selfplayerid = AI_GetPlayerID()
+s_selfplayer = AIPlayer_GetLocal(s_selfplayerid)
+s_self_modplayer = AI_GetPlayer()
+s_current_race = AIPlayer_GetRace( s_self_modplayer )
+s_self_team = AI_GetTeamID()
+s_diffLevel = AIPlayer_GetDifficultyLevel( s_selfplayer )
+
+-- this determines if we are still in the buildorder phase (or have moved onto the dynamic game strategies)
+s_buildorder_phase = true
+
+s_calccapture_priorities_time = -1
+s_calccapture_priorities_interval = 5
+s_calctarget_priorities_time = -1
+s_calctarget_priorities_interval = 2.75
+
+
+-- this is the number of seconds between purchasing
+k_maxBuildOrderTime = 5*60
+
+
+---------------------------------------------------------------
+
+ai_assert = false
+
+-- list of all game components and if they are enabled or not
+s_components = {}
+
+-- list of all the task-groups 
+TGROUP_Error = 0
+TGROUP_Attack = 2
+TGROUP_Defend = 3
+TGROUP_BuildUnits = 4
+TGROUP_Tech = 5
+TGROUP_DefenceSecure = 6
+TGROUP_AddOns = 8
+TGROUP_SpecialUnit = 9
+TGROUP_PlayerAbility = 10
+TGROUP_CaptureHigh = 11
+TGROUP_CaptureLow = 12
+TGROUP_ResourceAddOns = 13
+TGROUP_Resurrect = 14
+TGROUP_BuildOrder = 100
+
+-- all task groups should be represented here
+TPRIORITY_Error						= 0.0
+TPRIORITY_CaptureHigh				= 85.0
+TPRIORITY_CaptureLow				= 50.0
+TPRIORITY_Attack					= 50.0
+TPRIORITY_Defend					= 50.0
+TPRIORITY_BuildUnits 				= 90.0
+TPRIORITY_Tech 						= 90.0
+TPRIORITY_Tech_IncompleteStructure 	= 110.0
+TPRIORITY_DefenceSecure  			= 100.0
+TPRIORITY_AddOns 					= 90.0
+TPRIORITY_SpecialUnit				= 1000.0
+TPRIORITY_PlayerAbility				= 90
+TPRIORITY_BuildOrder 				= 105.0
+
+
+
+-------------------------------------------------------------
+-- Budget Information
+
+REGULAR_BUDGET_TYPE = 1
+POWER_BUDGET_TYPE = 2
+
+s_budget_info = {}
+s_budget_info[ REGULAR_BUDGET_TYPE ] = {
+	last_purchase_time = -1,
+	purchase_interval = 3, 
+	defs = {
+		{"BUDGET_Units", 	TGROUP_BuildUnits, },
+		{"BUDGET_Tech", 	TGROUP_Tech, },
+		{"BUDGET_Secure", 	TGROUP_DefenceSecure, },
+	}
+}
+
+s_budget_info[ POWER_BUDGET_TYPE ] = {
+	last_purchase_time = -1,
+	purchase_interval = 5.75,
+	defs = {
+		{"BUDGET_AddOn", 	TGROUP_AddOns, },
+	}
+}
+
+-- table for each budget that contains the timer offset that is setup by the personalities
+s_purchase_delay_timer_max = {}
+
+-------------------------------------------------------------------
+-- Helper function to calculate capture priorities
+-- NOTE: this name can NOT change since its being referenced from code
+function CalcCapturePriorities()
+	-- calculate capture priorities 
+	-- do this before military priorities
+	
+	-- check to see if this is enabled
+	if s_components[COMPONENT_Resourcing] == false then
+		AIResource_ClearCapturePointPriorities(s_selfplayer)
+		return
+	end
+	
+	if (s_buildorder_phase) then
+		strategy_buildorder.calculate_capture_priorities()
+	else
+		strategy_resourcing.calculate_capture_priorities()
+	end
+end
+
+function Purchase_InitTimeToPurchase()
+
+	s_purchase_delay_timer_max[POWER_BUDGET_TYPE] = 0
+	s_purchase_delay_timer_max[REGULAR_BUDGET_TYPE] = s_personality.purchase_delay_pace
+
+end
+
+function Purchase_IsTimeToPurchase( budget_type )
+	
+	return (World_GetGameTime() > s_budget_info[ budget_type ].last_purchase_time)
+end
+
+function Purchase_ResetPurchaseTimer( budget_type )
+
+	local b_info = s_budget_info[ budget_type ]
+	 -- how many seconds to next update
+	b_info.last_purchase_time = World_GetGameTime() + b_info.purchase_interval + s_purchase_delay_timer_max[budget_type]
+	
+end
+
+function Purchase_KillInActiveBudgetTasks( budget_type )
+	
+	local b_defs = s_budget_info[ budget_type ].defs
+	
+	for k,v in pairs(b_defs) do
+		
+		aitrace("KillBudgets:"..k.." Name:"..v[1])
+		-- get the resources that were allocated to this groups inactive tasks
+		local resInactive = Task_CountGroupCost( s_selfplayer, v[2], false )
+		
+		-- add the inactive tasks cost back into the budget system (since its being killed)
+		ai_budget:add_resources( resInactive, v[1] )
+		
+		-- kill the inactive tasks of this particular group
+		Task_KillInactiveTasksInGroup( s_selfplayer, v[2] )
+	end
+end
+
+------------------------------------------------------------
+-- init the build order strategy
+
+--------------------------------------------------------------------
+
+AI_Think1 = function()
+
+	s_selfplayer = AIPlayer_GetLocal(AI_GetPlayerID())
+	
+	if (ai_assert == true) then
+		DebugDisplay()
+		return
+	end
+	
+	--reset aitraces
+	aitraceclear()
+	
+	aitrace("DIFFLEVEL:"..s_diffLevel)
+
+	-- the killing of inactive purchase tasks should happen
+	-- before the caching/updating of perframe stats. This is done
+	-- because some of the stats may be caching these off tasks which
+	-- are about to be killed. If we calculate the stats then killed the tasks
+	-- these stats would need to be invalidated
+	if (s_buildorder_phase==false) then
+		
+		aitrace("Trying to killing InActive budgets")
+		for k,v in pairs(s_budget_info) do
+			
+			if (Purchase_IsTimeToPurchase( k )) then
+				Purchase_KillInActiveBudgetTasks( k )
+			end
+			
+		end
+	end
+
+	if (s_simulate_pre==nil) then
+		
+		-- update the AI to adjust itself due to any changes during the sim's simulatepre - like the winconditions
+		AIPlayer_SimulatePre( s_selfplayer )
+		
+		cache.simulate_pre()
+		strategy_tech_purchase.simulate_pre()
+	
+		s_simulate_pre=true
+	end
+	
+	cache.perframe_data()
+	
+end
+
+AI_Analyze1 = function()
+	
+	------- 1 --------------------------
+	-- analyze game state and adjust 
+	-- attack percentage,
+	
+	state_analysis.update()
+	
+end
+
+AI_Analyze2 = function()
+
+	------- 2 ------------------------------------------------
+	-- determine high level goals (budgets, priorities, etc)
+
+	ai_budget:update()
+	
+end
+	
+AI_Analyze3 = function()
+
+	-- calculate the priorities based on the mode (buildorder vs dynamic)
+	-- do command tree purchasing - uses command points
+	if (World_GetGameTime() > s_calccapture_priorities_time) then
+		CalcCapturePriorities()
+		s_calccapture_priorities_time = World_GetGameTime() + s_calccapture_priorities_interval
+	end
+	
+end
+
+AI_Analyze4 = function()
+
+	-- calculate military priorities 
+	-- do this after capture priorities so capture priorities can feed into this
+	if (World_GetGameTime() > s_calctarget_priorities_time) then
+		strategy_military.calculate_military_priorities()
+		s_calctarget_priorities_time = World_GetGameTime() + s_calctarget_priorities_interval
+	end
+
+end
+
+AI_Think2 = function()
+
+	aipushtrace("Strategies")
+	
+	------- 3 --------------------------
+	-- run strategies (using above data/budgets/priorities)
+	if (s_buildorder_phase) then
+		
+		strategy_buildorder.execute()
+		
+		-- if we start getting attacked then lets exit this phase
+		if (AIPlayer_TotalDamageReceived(s_selfplayer) > 0 or strategy_buildorder.is_done() or World_GetGameTime() > k_maxBuildOrderTime) then
+			s_buildorder_phase = false
+			-- we may want to cancel all the build order requests (?)
+			Task_KillInactiveTasksInGroup( s_selfplayer, TGROUP_BuildOrder )
+		end
+		
+		strategy_resourcing.execute()
+	
+	else
+		
+		strategy_resourcing.execute()
+
+		-- regular purchases
+		if (Purchase_IsTimeToPurchase(REGULAR_BUDGET_TYPE)) then
+			ai_budget:do_purchases(false)
+			Purchase_ResetPurchaseTimer(REGULAR_BUDGET_TYPE)
+		end
+		
+		-- power purchases
+		if (Purchase_IsTimeToPurchase(POWER_BUDGET_TYPE)) then
+			ai_budget:do_purchases(true)
+			Purchase_ResetPurchaseTimer(POWER_BUDGET_TYPE)
+		end
+		
+	end
+end
+
+AI_Think3 = function()
+
+	-- handles incomplete structures - if there are any (this could be checked less frequently)
+	HandleIncompleteStructures()
+	
+	-- determine if we should cancel incomplete buildings
+	Construction_ScuttleIncompleteThreatenedBuildings( s_selfplayer, 50 );
+	
+	------- 3 --------------------------
+	-- run military strategies
+	
+	-- always run the military strategies
+	strategy_military.execute()
+	
+	aipoptrace()
+	
+end
+	
+AI_Think4 = function()
+
+	-- handles a debug displays
+	
+	DebugDisplay()
+	
+end
+
+function EnableComponent( enable, module )
+	s_components[ module ] = enable
+end
+
+function IsComponentEnabled( module )
+	return s_components[ module ] == true
+end
+
+s_powerAvailableForAbilities = 0
+s_abilityPowerSpent = 0
+s_powerToLock = 150
+
+-- this function locks a certain amount of resources
+function ability_money_cache( availableResources )
+
+	-- SHOULD DETERMINE HOW MANY UNITS NEED MONEY AND HOW MUCH. INSTEAD OF ALWAYS LOCKING X AMOUNT
+
+	local minPowerToLock = s_powerToLock + (availableResources.power-s_powerToLock)*0.25
+	
+	-- determine the amount of power available at this part of the budget 
+	s_powerAvailableForAbilities = math.min( availableResources.power, minPowerToLock )
+	-- subtract the amount of money used by abilities in the previous frames since last being called
+	s_powerAvailableForAbilities = s_powerAvailableForAbilities - s_abilityPowerSpent
+	
+	aitrace("Power available for squad abilities:"..s_powerAvailableForAbilities)
+	
+	-- if power have been spent we need to alert the budget system
+	if (s_abilityPowerSpent > 0) then
+		aitrace("Ability has been triggered using "..s_abilityPowerSpent.." power!")
+		local resAmountSpent = ResourceAmount_Zero()
+		resAmountSpent.power = s_abilityPowerSpent
+		-- reset the power spent
+		s_abilityPowerSpent = 0
+		-- this reduces the demand for these abilities
+		return true, resAmountSpent
+	end
+	
+	local resLockAmount = ResourceAmount_Zero()
+	resLockAmount.power = s_powerAvailableForAbilities
+	
+	return false, resLockAmount
+
+end
+
+-- determine if this tactic can be used given the budget it has for it
+function CanUseAbilityPowerBudget( resAmount )
+
+	-- check to see if we have enough power
+	if (resAmount.power < (s_powerAvailableForAbilities-s_abilityPowerSpent)) then
+		return true
+	end
+	
+	return false
+end
+
+-- when the ability has been triggered this function needs to be called with power that has been spent
+function UseAbilityPowerBudget( resAmount )
+	
+	-- accumulate the money spent inbetween budget calculations
+	s_abilityPowerSpent = s_abilityPowerSpent + resAmount.power
+	
+end
+
+function HandleIncompleteStructures()
+
+	local incomplete_structures = Construction_IncompleteStructuresCount( s_selfplayer )
+	aitrace("Incomplete structures:"..incomplete_structures)
+	if (incomplete_structures > 0) then
+		local allocatedTasks = Task_CountIncompleteStructure( s_selfplayer )
+		aitrace("Tasks For Completing Structure:"..allocatedTasks)
+		if (allocatedTasks == 0) then
+			Request_FinishIncompleteStructure( s_selfplayer, TGROUP_Tech, TPRIORITY_Tech_IncompleteStructure )
+		end
+	end
+
+end
+
+-- this is a place to put all variables that are often used and often different based on race
+function InitializeCommonUseVars()
+
+	print("current_race = ",s_current_race)
+
+end
+
+function InitializeStrategies()
+
+	-- there is no build order phase after the first frame (incase of restarts, savegame, etc)
+	if (World_GetGameTime() > 0 or (AI_IsSP and AI_IsSP()) ) then
+		s_buildorder_phase = false
+	end
+	
+	-- initialize the budget system
+	ai_budget:init()
+	ai_budget:add( "BUDGET_Units", strategy_unit_purchase.do_purchase, 150, true )
+	ai_budget:add( "BUDGET_Tech", strategy_tech_purchase.do_purchase, 40, true, 1 )
+	ai_budget:add( "BUDGET_AddOn", strategy_addon_purchase.do_purchase, 6, true )
+	ai_budget:add( "BUDGET_Secure", strategy_defence_purchase.do_purchase, 17, false, 1 )
+	ai_budget:add( "BUDGET_ResourceAddOn", strategy_resourcing.do_purchase, 17, false, 1 )
+	ai_budget:add( "BUDGET_PlayerAbility", player_abilities.do_purchase, 5, true )
+	ai_budget:add( "BUDGET_SquadAbility", ability_money_cache, 5, true, 1 )
+	
+	-- this does the first distribution of funds
+	ai_budget:simulate_pre()
+	
+	-- initialize the analysis system
+	state_analysis.init()
+	
+	-- initialize the strategies
+	player_abilities.init()
+	strategy_unit_purchase.init()
+	strategy_tech_purchase.init()
+	strategy_defence_purchase.init()
+	strategy_addon_purchase.init()
+	strategy_military.init()
+	strategy_resourcing.init()
+	
+	Purchase_InitTimeToPurchase()
+		
+	if (s_buildorder_phase) then
+		strategy_buildorder.init()
+	end
+
+
+end
+
+function InitializePlayer()
+
+	print("InitializePlayer")
+
+	dbAssert(s_personality ~= nil and s_personality.clump_scan_params ~= nil)		
+		
+	AIPlayer_SetClumpScanData( s_selfplayer, s_personality.clump_scan_params )
+end
+
+--------------------------------------------------------------------
+
+function InitializeAI()
+
+	print("InitializeAI")
+	
+	--modules that designers can turn on/off (enable all by default)
+	s_components = {}
+	for ict=0, (COMPONENT_COUNT-1) do
+		s_components[ict] = true
+	end
+	
+	TimeRule_RemoveAll(0)
+	TimeRule_AddInterval( AI_Think1, 0.5, 0 )
+	TimeRule_AddInterval( AI_Analyze1, 0.5, 0 )
+	TimeRule_AddInterval( AI_Analyze2, 0.5, 0 )
+	TimeRule_AddInterval( AI_Analyze3, 0.5, 0 )
+	TimeRule_AddInterval( AI_Analyze4, 0.5, 0 )
+	TimeRule_AddInterval( AI_Think2, 0.5, 0 )
+	TimeRule_AddInterval( AI_Think3, 0.5, 0 )
+	TimeRule_AddInterval( AI_Think4, 0.5, 0 )
+	
+	local player_id = AI_GetPlayerID()
+		
+	-- turn display on and off
+	dr_setdisplay("aidebug"..player_id, true)
+	
+	InitializeCommonUseVars()
+	
+	-- initialize cache system - and cache game properties that never change
+	cache.init()
+	
+	-- creat the personality file (based on race, level of difficulty, randomness)
+	s_personality.Create()
+
+	-- now that are variables are loaded, set any initialization data on the player
+	InitializePlayer()
+		
+	-- initialize strategies
+	InitializeStrategies()
+			
+	-- first frame calculations
+	CalcCapturePriorities()
+	strategy_military.calculate_military_priorities()
+	
+end
+
+-- this is called to reset the game to its beginning stage and reloads
+-- the personality info
+function Reset( player )
+
+	-- unlock everything
+	Task_KillAll( s_selfplayer )
+	
+	-- reset the diffleve var
+	s_diffLevel = AIPlayer_GetDifficultyLevel( s_selfplayer )
+	
+	-- reload personality info
+	s_personality.Create()
+	
+	-- now that are variables are loaded, set any initialization data on the player
+	InitializePlayer()
+	
+	-- initialize strategies
+	InitializeStrategies()
+	
+end
+
+-- only run this if the AI is initially enabled
+InitializeAI()

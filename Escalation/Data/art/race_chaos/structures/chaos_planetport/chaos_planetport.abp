@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "chaos_planetport",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

@@ -1,0 +1,20 @@
+
+---------------------------------------------------------------------------------
+-- list all the addons we never want to build - quicker to do this instead of using the demand override functions below
+s_ignore_addons = {}
+
+---------------------------------------------------------------------------------
+-- Rules for squad-addons
+
+function SquadAddonUpgradeRules( upgradePBG, currentDemand )
+		
+	-- INSERT MORE RULES HERE
+	
+	-- other addson should decrease in demand as they increase in count
+	local ucount = UtilPBG_CountTotal( upgradePBG )
+	if (ucount > 0) then
+		return -ucount*ucount*3 -- 3,12,27,...
+	end
+	
+	return 0
+end

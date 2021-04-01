@@ -1,0 +1,293 @@
+
+import("rules_unit_purchase.ai")
+
+
+state_analysis = {}
+
+state_analysis.enable_military_unit_building = true
+state_analysis.start_attack_time = 0
+
+state_analysis.init = function()
+
+	state_analysis.start_attack_time = s_personality.start_attack_time + AI_RandRange(0,s_personality.start_attack_time_variance)
+	print("AI Start AttackTime:"..state_analysis.start_attack_time)
+	
+	state_analysis.military_attackPercentage = 0
+
+end
+
+state_analysis.update = function()
+	
+	state_analysis.recalculate_budgets()
+	state_analysis.recalculate_target_choice_importance()
+	state_analysis.recalculate_attackpercentage()
+	state_analysis.update_military_value_cap()
+	
+end
+
+-- update the military cap - used in easy and normal
+state_analysis.update_military_value_cap = function()
+
+	aitrace("updating military value cap")
+	
+	state_analysis.enable_military_unit_building = true
+	
+	if (s_personality.min_military_value_start < 0) then
+		aitrace("no military value cap")
+		return
+	end
+	
+	-- what military_value do we need before we start disabling purchasing
+	local min_military_value = s_personality.min_military_value_start
+	aitrace("start min_military_value:"..min_military_value)
+	
+	local time_past_start = World_GetGameTime() - state_analysis.start_attack_time
+	-- has the attack-time elapsed
+	if (time_past_start > 0) then
+		local increment = (s_personality.min_military_value_increment_per_minute*time_past_start/60)
+		min_military_value = min_military_value + increment
+		aitrace("new min_military_value:"..min_military_value.." mins:"..time_past_start/60)
+	end
+
+	if (cache.military_value < min_military_value) then
+		aitrace("No need to disable - since AI is below min military value")
+		return
+	end
+	
+	-- if we are above the min military value we should disable only if we are beating the enemy by a certain percentage
+	if (s_personality.glue_military_percentage ~= nil and 
+		cache.military_percent_value > s_personality.glue_military_percentage) then
+		
+		aitrace("Disabling the AI military production")
+		state_analysis.enable_military_unit_building = false
+	end
+
+end
+
+-- this will update the budget percentages based on many game factors (economy, military, current funds, etc)
+state_analysis.recalculate_budgets = function()
+
+	aipushtrace("RecalculateBudgets")
+	
+	----------------------------------------------------------------------
+	-- USE THE CALCULATES TO DETERMINE CHANGES IN BUDGET/PRIORITIES/ETC
+	
+	local increase_tech = CalcDemandTechPriorityLevel()
+
+	-- the demand increases for each tech level
+	local tech_to_budget_levels = {15, 30, 50, 65}
+	
+	aitrace("increase_tech level:"..increase_tech.." Demand:"..tech_to_budget_levels[increase_tech])
+	ai_budget:setweight( "BUDGET_Tech", tech_to_budget_levels[increase_tech] )
+	
+	-- defensiveness divides the money between units/tech and securing/defense
+	if (s_personality.defensiveness>0) then
+		local secure_budget = (s_personality.defensiveness * 40) + 10
+		
+		-- incase we need lots of tech, lets suppress defense for a bit
+		if (increase_tech >= TECHPRIORITY_Urgent) then
+			secure_budget = secure_budget*0.5
+		end
+		
+		ai_budget:setweight( "BUDGET_Secure", secure_budget )
+	end
+
+	if (GetSquadUrgentNeedMultiplier() > 1.1) then
+		ai_budget:setweight( "BUDGET_Units", 5000 )		
+	else
+		ai_budget:setweight( "BUDGET_Units", 150 )
+	end
+	
+	--ai_budget:setweight( "BUDGET_Secure", 1000 )
+	--ai_budget:setweight( "BUDGET_Units", 70 )
+	--ai_budget:setweight( "BUDGET_Tech", 10 )
+	--ai_budget:setweight( "BUDGET_AddOn", 30 )
+	--ai_budget:setweight( "BUDGET_ResourceAddOn", 30 )
+	
+	-- apply designer override budget weights
+	AddDesignerBudgetWeights()
+	
+	aipoptrace()
+	
+end
+
+state_analysis.recalculate_target_choice_importance = function()
+
+	aitrace("state_analysis.recalculate_target_choice_importance")
+	if (cache.vp_total > 0) then
+	
+		local selfTickers = cache.self_vp_tickers
+		local enemyTickers = cache.enemy_vp_tickers
+		
+		local minticker = math.min( selfTickers, enemyTickers )
+		local ticker_warning_level = s_personality.vp_ticker_warning_level
+		if (minticker < ticker_warning_level) then
+			local multvp = (ticker_warning_level-minticker) / ticker_warning_level
+			
+			targetChoice_victoryPoint = 9 + (multvp*50)
+			aitrace("targetChoice_victoryPoint:"..targetChoice_victoryPoint)
+		
+		else
+			
+			local vp_wanted = math.floor(cache.vp_total * s_personality.max_percentage_vp_wanted)
+			aitrace("VP-Wanted:"..vp_wanted)
+
+			-- value doubled, because the value is relative to our fair share
+			local captured_threshold_65 = GetTeamRelativeFairShareValue(2*0.65, cache.num_teams )
+			local captured_threshold_for_vp = GetTeamRelativeFairShareValue(2*s_personality.min_percentage_pts_captured_for_vp, cache.num_teams )
+			
+			-- if we own more than 65% of the world then increase our want for VP
+			if (cache.percentage_pts_captured > captured_threshold_65) then
+				vp_wanted = cache.vp_total
+				aitrace("VP-LimitIncreased Because AI Owns tons of territory")
+			elseif (cache.percentage_pts_captured < captured_threshold_for_vp) then
+				vp_wanted = 0
+				aitrace("VP-Limited to Zero because AI does not own enough territory")
+			end
+			
+			if (cache.vp_owned_self < vp_wanted) then
+				local vp_score = 6 + (s_personality.vp_aggressiveness*50)
+
+				local vp_offset = 0
+				local difftickers = enemyTickers - selfTickers
+				local diffticker_warning = cache.max_vp_tickets*0.25 -- 250 in 1000, 125 in 500,  in 250 pt game
+				-- if enemy has this many more tickers than increase VP score
+				if (difftickers > diffticker_warning) then
+					vp_offset = 1 + (difftickers-diffticker_warning)/(cache.max_vp_tickets-diffticker_warning)*15
+					aitrace("Enemy has "..difftickers.." more than AI, increasing VP-importance by:"..vp_offset)
+				end
+				
+				aitrace("Setting VP-importance to:"..vp_score + vp_offset)
+				
+				targetChoice_victoryPoint = vp_score + vp_offset
+				
+			else
+				targetChoice_victoryPoint = -1
+			end
+		end	
+	end
+	
+	local power_pts_percentage = 0.5
+	
+	if (cache.total_pts_owned > 0) then
+		power_pts_percentage = cache.total_power_pts_owned / cache.total_pts_owned
+	end
+	
+	if (s_personality.prefer_power_percentage > power_pts_percentage) then
+		targetChoice_requisitionPoint = 6
+		targetChoice_powerPoint = 9
+	else 
+		targetChoice_requisitionPoint = 9
+		targetChoice_powerPoint = 6
+	end
+	
+	-- once we have more than the equilibrium amounts for each point we can reduce their need
+	-- but this might decrease their importance which is different
+	
+--~ 	DEFAULTS -----------
+--~ 	targetChoice_requisitionPoint = 10
+--~ 	targetChoice_victoryPoint = 9
+--~ 	targetChoice_powerPoint = 7
+--~ 	targetChoice_defence = 4
+--~ 	targetChoice_requisitionPoint = 3
+--~ 	targetChoice_hq = 0
+--~ 	targetChoice_spawner = 0
+
+end
+
+state_analysis.recalculate_attackpercentage = function()
+
+	aitrace("state_analysis.recalculate_attackpercentage")
+	
+	local cap_attack_percentage = 1
+	if (cache.threat_at_base > 5) then
+		-- cap attack percentage [0.05,1]
+		cap_attack_percentage = math.max( 100-cache.threat_at_base, 5 )/100
+		aitrace("capping attack percentage when base underattack:"..cap_attack_percentage)
+	end
+	
+	-- VP rules trump other rules
+	if (cache.vp_total > 0) then
+	
+		local selfTickers = cache.self_vp_tickers
+		local enemyTickers = cache.enemy_vp_tickers
+		
+		local minticker = math.min( selfTickers, enemyTickers )
+		local ticker_warning_level = s_personality.vp_ticker_warning_level
+		if (minticker < ticker_warning_level) then
+			
+			local multvp = (ticker_warning_level-minticker) / ticker_warning_level -- [0,1]
+			aitrace("multvp:"..multvp)
+			local attackPercentage = 0.6 + multvp*0.4
+			aitrace("start-attack-percentage:"..attackPercentage)
+			
+			if (cache.vp_owned_self > cache.vp_owned_enemy) then
+				aitrace("AI has more VP - switch to defence")
+				attackPercentage = 1-attackPercentage
+			end
+			
+			aitrace("Setting attackpercengtage to:"..attackPercentage)
+			
+			if (attackPercentage > cap_attack_percentage) then
+				attackPercentage = cap_attack_percentage
+				aitrace("underattack capping attackpercentage to "..cap_attack_percentage)
+			end
+			
+			state_analysis.military_attackPercentage = attackPercentage
+			
+			return
+		end
+		
+	end
+	
+	local attackTimeDiff = World_GetGameTime() - state_analysis.start_attack_time
+	
+	-- once this time is above zero then we start upping the attack percentage (zero on hard, large time in easy/normal)
+	if (attackTimeDiff < 0) then
+		
+		aitrace("Attack-Disabled until:"..state_analysis.start_attack_time)
+		state_analysis.military_attackPercentage = 0
+		
+	else
+		aitrace("Attack-At-Default")
+		local new_attack_percentage = s_personality.default_attack_percentage
+		
+		aitrace("default attack percentage:"..new_attack_percentage)
+		
+		if (s_personality.attack_percentage_increment_per_minute > 0) then
+		
+			-- escalate attack percentage based on a timer
+			new_attack_percentage = new_attack_percentage + s_personality.attack_percentage_increment_per_minute * attackTimeDiff/60
+			aitrace("time escalated attack percentage:"..new_attack_percentage)
+			
+		else
+			
+			-- escalate attack percentage based on a winning force (used in hard/hardest)
+			if (cache.military_count > 4 or cache.military_value > 400) then
+				-- get the percentage representing how much better our army is then our enemies
+				if (cache.military_percent_value > 0.4 and state_analysis.military_attackPercentage < 1) then
+					-- get a value between 0-1 that is how well this AI is doing
+					local norm_military_val = math.min((cache.military_percent_value-0.4)/0.6, 1)
+					new_attack_percentage = new_attack_percentage +  norm_military_val * (1-new_attack_percentage)
+					new_attack_percentage = math.min(new_attack_percentage,1)
+					aitrace("escalated attack percentage:"..new_attack_percentage)
+				end
+			end
+		
+		end
+		
+		if (s_personality.max_attack_percentage ~= nil and new_attack_percentage > s_personality.max_attack_percentage) then
+			new_attack_percentage = s_personality.max_attack_percentage
+		end
+		
+		if (new_attack_percentage > cap_attack_percentage) then
+			new_attack_percentage = cap_attack_percentage
+			aitrace("underattack capping attackpercentage to "..cap_attack_percentage)
+		end
+		
+		aitrace("setting attack-percentage to "..new_attack_percentage)
+		state_analysis.military_attackPercentage = new_attack_percentage
+	end
+end
+
+

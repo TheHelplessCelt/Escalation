@@ -1,0 +1,73 @@
+
+stack_trace_num = 0
+tracing = {}
+
+function aitrace( msg )
+
+	if (msg == nil) then
+		return
+	end
+
+	for i = 0, stack_trace_num-1 do
+		msg = ("   "..msg)
+	end
+
+	table.insert(tracing, msg)
+	
+end
+
+function aipushtrace( name )
+	aitrace( name )
+	stack_trace_num = stack_trace_num + 1
+end
+
+function aipoptrace( name )
+	stack_trace_num = stack_trace_num - 1
+	aitrace( name )
+end
+
+function aitraceclear( )
+	tracing = {}
+	stack_trace_num = 0
+end
+
+function aiclearscreen( )
+	dr_clear("aidebug"..AI_GetPlayerID())
+end
+
+function dbAssert( b )
+
+	if (b == false) then
+		ai_assert = true
+		local t = debug.getinfo( 2 )
+		local txt = "ASSERT: src:"..t.source.." line:"..t.currentline
+		aitrace(txt)
+		error(txt)
+	end
+
+end
+
+function res_to_str( resource_amount )
+	
+	local txt = string.format( "<Requisition:%.1f Power:%.1f>", resource_amount.requisition, resource_amount.power )
+	
+	return txt
+end
+
+-- clear table without creating a new table (to prevent new mem alloc).
+function clear_kv_list(kv_list)
+	for k,v in pairs(kv_list) do 
+		kv_list[k] = false -- nil
+	end
+end
+
+-- kill aitracing
+emptyfunc = function() end
+
+if (not AI_DebugEnabled()) then
+	aitrace=emptyfunc
+	aipushtrace=emptyfunc
+	aipoptrace=emptyfunc
+	aiclearscreen=emptyfunc
+	aitraceclear=emptyfunc
+end

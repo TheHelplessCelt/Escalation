@@ -1,0 +1,167 @@
+
+
+-- All debug-related functionality
+
+s_debug_enabled = true
+
+function DebugPrint( x, y, text )
+	
+	-- the selected color of the text:
+	local colour = {255,255,192}
+	
+	dr_text2d( "aidebug"..s_selfplayerid, x, y, text, colour[1], colour[2], colour[3] )
+end
+
+-- Show all debug information for this AI (2D and 3D displays)
+function DebugDisplay()
+
+	dr_setautoclear("aidebug"..s_selfplayerid, 0)
+
+	-- do display if enabled
+	
+	if( s_debug_enabled == false ) then
+		return 
+	end
+	
+	dr_clear("aidebug"..s_selfplayerid)
+
+	-- show different items based on which debug flags are enabled
+	
+	db_table( g_locals )
+	g_locals = {}
+		
+end
+
+------------------------------------------------------
+
+function print_table( tbl, tabstr )
+
+	local result_string = ""
+	
+	if (tabstr) then
+		tabstr = tabstr.."--"
+	else 
+		tabstr = "+-"
+	end
+	
+	function print_entry(a,b)
+		
+		if (type(b) == "table" and b ~= _G) then
+			result_string = result_string .. print_table(b, tabstr) .. "\n"
+		elseif (type(b) ~= "function") then
+			local str = tabstr..a..":"..tostring(b).."\n"
+			result_string = result_string .. str
+			print(str)
+		end
+	end
+	
+	table.foreach( tbl, print_entry )
+
+	return result_string
+end
+
+function print_table_aitrace()
+	return print_table(tracing)
+end
+
+function print_table_demand()
+	return CreateDemandsDebugString(true)
+end
+
+function print_table_army_eval()
+	return CreateArmyEvalDebugString()
+end
+
+function print_locals()
+
+	print("--DUMPINGLOCALS--")
+	
+	local index = 1
+	repeat
+		a,b = debug.getlocal(2,index)
+		if b then 
+			print( a,b )
+			if (type(b) == "table") then
+				print_table(b)
+			end
+		end
+		index = index + 1
+		
+	until b == nil
+
+	print("------------------")
+end
+
+g_locals = {}
+
+function get_local_tbl( level )
+	
+	-- insert the function name this is from
+	table.insert( g_locals, debug.getinfo( 3, "n" ).name )
+	
+	local index = 1
+	repeat
+		a,b = debug.getlocal(level,index)
+		if (b) then
+			if (type(b) == "table") then
+				table.insert( g_locals, {a,b} )
+			else
+				local txt = a.." = "..tostring(b)
+				table.insert( g_locals, txt )
+			end
+		end
+		index = index + 1
+		
+	until b == nil
+	
+end
+
+function db_table( tbl, tabstr )
+
+	if (tabstr) then
+		tabstr = tabstr.."--"
+	else 
+		tabstr = "+-"
+		db_y =  0.04
+	end
+	
+	function print_entry(a,b)
+		
+		if (type(b) == "table" and b ~= _G) then
+			db_table(b, tabstr, db_y)
+		elseif (type(b) ~= "function") then
+			local txt = tabstr..a.." : "..tostring(b)
+			DebugPrint( 0.6, db_y, txt )
+			db_y = db_y + 0.025
+		end
+		
+	end
+	
+	table.foreach( tbl, print_entry )
+	
+end
+
+function db()
+	
+	-- get and store a bunch of local vars
+	get_local_tbl(3)
+	
+end
+
+-- temp: this is an example of how to get a bunch of info from lua
+function dinfo()
+	local t = debug.getinfo( 3 )
+	
+	print("--DEBUG INFO--")
+	if (t.name) then
+		print( "name:"..t.name )	
+	end
+	print( "namewhat:"..t.namewhat )
+	print( "what:"..t.what )
+	print( "src:"..t.source )
+	print( "line:"..t.currentline )
+	--print( "nups:"..t.nups )
+	--print( "linedef:"..t.linedefined ) -- line the function is defined
+	--print( "shortscr:"..t.short_src )
+	print("----------------")
+end

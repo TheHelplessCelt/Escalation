@@ -1,0 +1,289 @@
+
+
+
+player_abilities = {}
+
+s_player_ability_list = {}
+s_player_ability_demand = {}
+
+s_playerabilities_enabled = true
+
+-- List of all available player abilities
+-- s_player_ability_list 
+
+player_abilities.init = function()
+
+	s_player_ability_list = {}
+
+	local ability_count = AIAbility_GetPlayerCount(s_selfplayer)
+
+	for i=0, ability_count-1 do
+		local pbg = AIAbility_GetPlayerAt(s_selfplayer, i)
+		
+		if (pbg) then
+			table.insert(s_player_ability_list, pbg)		
+		end
+	end
+	
+	s_player_ability_demand = {}
+
+end
+
+function ability_trace( msg )
+
+	aitrace(msg)
+	
+	local ticks = World_GetGameTime()
+	-- pipe this out also
+	--print( "Time:"..ticks.."Ability:"..msg )
+
+end
+
+function CalcPlayerAbilityDemand()
+	
+	if (s_player_ability_list==nil) then
+		ability_trace("Could not find s_player_ability_list!" )
+		return
+	end
+	
+	local tcount = table.getn(s_player_ability_list)
+	ability_trace("PlayerAbilityCount:"..tcount)
+	if (tcount == 0) then
+		return
+	end
+	
+	-- go through each and determine the demands for each of the abilities
+	for k,v in pairs(s_player_ability_list) do 
+		local abilityPBG = v
+		
+		ability_trace("Testing to CanCast:"..PBG_GetName(abilityPBG))
+		
+		if (AIPlayer_CanPlayerCastAbility( s_selfplayer, abilityPBG )) then
+					
+			local demandFuncName = AIAbility_GetDemandFunc( abilityPBG )
+			
+			ability_trace("CanCast:"..PBG_GetName(abilityPBG).." DemandFunc:"..demandFuncName)
+			
+			if (demandFuncName ~= "") then
+			
+				local demand = -1
+				
+				local demandFunc = _G[demandFuncName]
+								
+				if (demandFunc) then
+					demand = demandFunc( abilityPBG )
+				else
+					error("ERROR: AbilityPBG:"..PBG_GetName(abilityPBG).." DemandName:"..demandFuncName)
+				end
+				
+				if (demand > 0) then
+					s_player_ability_demand[abilityPBG] = demand + AI_RandRange(-5,5)
+				end
+				
+				ability_trace("Demand("..demand.."):"..PBG_GetName(abilityPBG))
+			end
+		end
+		
+	end
+		
+end
+
+-- returns if this is a special ability AND if it cast this ability or not
+function CastMilitaryPointTargetingAbility( abilityPBG )
+
+	local pbgid = PBG_GetID( abilityPBG )
+	
+	return false, false
+
+end
+
+function IsPointBeingStolenFromUs()
+
+	-- look through our military points
+	local militaryPointCount = Military_GetMilitaryPointCount(s_selfplayer, s_self_modplayer)
+
+	for j=0, militaryPointCount-1 do
+				
+		local militaryPoint = Military_GetMilitaryPointAt(s_selfplayer, s_self_modplayer, j)
+	
+		if Military_IsMilitaryPointValid(militaryPoint) then
+			if (Military_IsMilitaryPointBeingCapturedByEnemy( s_selfplayer, militaryPoint )) then
+				return true
+			end
+		end
+	end
+	
+	return false
+end
+
+function FindBestPointBeingStolenFromUs()
+
+	-- look through our military points
+	local militaryPointCount = Military_GetMilitaryPointCount(s_selfplayer, s_self_modplayer)
+
+	local bestscore = 0
+	local bestpoint = nil
+	
+	for j=0, militaryPointCount-1 do
+				
+		local militaryPoint = Military_GetMilitaryPointAt(s_selfplayer, s_self_modplayer, j)
+	
+		if Military_IsMilitaryPointValid(militaryPoint) then
+			if (Military_IsMilitaryPointBeingCapturedByEnemy( s_selfplayer, militaryPoint )) then
+				-- get importance of this point
+				local importance = Military_GetCombinedImportanceAtMilitaryPoint(s_selfplayer, militaryPoint)
+				local threat = Military_GetCombinedThreatAtMilitaryPoint( s_selfplayer, militaryPoint, false )
+				
+				local score = threat + importance/4
+				if (threat > 1 and score > bestscore) then
+					bestscore = score
+					bestpoint = militaryPoint
+				end
+			end
+		end
+	end
+	
+	return bestpoint
+end
+
+-- main function to cast the given PBG - client must check if it can be done and be paid for first
+function PlayerAbility_Cast( pbg )
+	
+	local isSpecialAbility, didCast = CastMilitaryPointTargetingAbility( pbg )
+	if (isSpecialAbility) then
+		ability_trace("Casting capture point targeting ability:"..PBG_GetName(pbg))
+		return didCast
+	end
+	
+	-- determine if there is a place to cast this ability
+	if (AIAbility_IsTargeted( pbg )) then
+		
+		ability_trace("Casting modal ability:"..PBG_GetName(pbg))
+		
+		if (PlayerAbility_CastOnTarget( pbg )) then
+			return true
+		end
+		
+		return false
+	end
+	
+	ability_trace("Casting non-modal ability:"..PBG_GetName(pbg))
+	
+	-- cast ability
+	Request_PlayerAbility( s_selfplayer, TGROUP_PlayerAbility, TPRIORITY_PlayerAbility, pbg ) 
+	return true
+end
+
+function PlayerAbility_CastOnTarget( pbg )
+	
+	-- check what type of target we are interested in
+	if (AIAbility_DoesTargetPosition( pbg )) then
+		
+		-- lets get the lua-function that will get us the positions we need for our abilities
+		local posFunc = AIAbility_GetPositionFunc( pbg )
+		ability_trace("Targeting position using func:"..posFunc)
+		if (posFunc and posFunc~="" and _G[posFunc]) then
+			ability_trace("Attempting to cast...")
+			-- if this ability requires facing, the we need to get two points from the given function
+			if (AIAbility_IsFacing( pbg )) then
+				ability_trace("Casting facing ability on two positions")
+				-- ask for two positions
+				local outPos1,outPos2 = _G[posFunc]()
+				-- only call if we get both - otherwise this ability was using a bad function
+				if (outPos1 and outPos2 and outPos1.x ~= COORD_INVALID) then
+					Request_PlayerAbilityDualTarget( s_selfplayer, TGROUP_PlayerAbility, TPRIORITY_PlayerAbility, pbg, outPos1, outPos2 )
+					return true
+				else
+					ability_trace("Player Ability:"..PBG_GetName(pbg).." didn't have two positions specified!")
+				end
+				
+			else	
+				ability_trace("Casting facing ability on single position")
+				local outPos = _G[posFunc]()
+				if (outPos and outPos.x ~= COORD_INVALID) then
+					Request_PlayerAbilitySingleTarget( s_selfplayer, TGROUP_PlayerAbility, TPRIORITY_PlayerAbility, pbg, outPos )
+					return true
+				else
+					ability_trace("Player Ability:"..PBG_GetName(pbg).." didn't have a position specified!")
+				end
+				
+			end
+			
+		end
+	end
+	
+	return false
+end
+
+player_abilities.do_purchase = function( availableResources )
+
+	if (not s_playerabilities_enabled) then
+		aitrace("PlayerAbilities disabled!")
+		return
+	end
+	
+	-- if we are already casting an ability skip this...
+	if (Task_CountActive( s_selfplayer, TASK_PlayerAbility, false) > 0) then
+		aitrace("PlayerAbilities already running - waiting....")
+		return
+	end	
+	
+	aipushtrace("PurchasePlayerAbilities")
+	
+	AIProfile_Marker3("AIPlayerAbilities")
+
+	-- clear ability demand
+	clear_kv_list(s_player_ability_demand)
+	
+	CalcPlayerAbilityDemand()
+	
+	local pbg, ab_demand = HighestPlayerAbilityDemand()
+	if (pbg) then
+		-- pick the ability with the highest demand
+		local abilityCost = AIAbility_GetCost(s_self_modplayer, pbg )
+	
+		ability_trace("Chose player ability:"..PBG_GetName(pbg).." Demand:"..ab_demand)
+		
+		-- determine if this can purchase this item
+		if (not ResourceAmount_Has( availableResources, abilityCost )) then
+			ability_trace("Could not chosen ability - hold the money")
+			aipoptrace()
+			return false, abilityCost
+		end
+	
+		-- cast this ability - if its successful then remove the cash
+		if (PlayerAbility_Cast( pbg )) then
+			aipoptrace()
+			return true, abilityCost
+		end
+	
+		-- else hold the money for this ability
+		aipoptrace()
+		return false, abilityCost
+	end
+	
+	ability_trace("No player ability chosen")
+	
+	aipoptrace()
+	
+	return false
+end
+
+function HighestPlayerAbilityDemand()
+	
+	local best_pbg = nil
+	local highest_demand = -100000
+
+	for pbg,dem in pairs(s_player_ability_demand) do
+		if (pbg  and dem ~= false) then
+			if (dem > highest_demand) then
+				best_pbg = pbg
+				highest_demand = dem
+			end
+		end
+	end
+	
+	return best_pbg, highest_demand
+
+end
+

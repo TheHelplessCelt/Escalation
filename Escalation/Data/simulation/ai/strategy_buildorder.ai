@@ -1,0 +1,166 @@
+
+strategy_buildorder = {}
+
+strategy_buildorder.init = function()
+
+	-- personality files have to be initialized at this point
+	dbAssert(s_personality ~= nil and s_personality.buildorder ~= nil)
+
+	s_buildorder_num = 1
+	s_lastbuilder_num = s_buildorder_num
+	
+	print("BuildOrderChosen:"..s_personality.buildorder.name)
+	aitrace("BuildOrderChosen:"..s_personality.buildorder.name)
+	
+end
+
+--------------------------------------------------------------------------------
+--
+	
+strategy_buildorder.calculate_capture_priorities = function()
+
+	if (s_personality.buildorder == nil) then
+		return
+	end
+	
+	local vp_mult = 1.0
+	local vphalf = 0
+	if s_personality.buildorder.vp_mult ~= nil then
+		vp_mult = s_personality.buildorder.vp_mult
+		
+		if (cache.vp_total) then
+			-- rank half the VP points with this value and no more than 3
+			vphalf = math.min( math.ceil( cache.vp_total*0.5 ), 3 )
+		end
+	end
+	
+	RankCapturePoints(vp_mult, vphalf)
+end
+
+--------------------------------------------------------------------------------
+--
+
+strategy_buildorder.execute = function()
+	
+	aipushtrace("BuildOrder")
+		
+	if (s_personality.buildorder == nil) then
+		aitrace("Error no list")
+		aipoptrace()
+		return
+	end
+	
+	--------------------------------------------------------------------------------
+	--
+	
+	aitrace("BuildOrderChosen:"..s_personality.buildorder.name)
+	
+	if (s_done~=true) then
+		
+		local buildorder_list = s_personality.buildorder.list
+		
+		for s_buildorder_num=s_lastbuilder_num, table.getn( buildorder_list ) do
+		
+			local current_build_order = buildorder_list[ s_buildorder_num ]
+			
+			-- if this step has a condition, evaluate it and determine if we should keep this step
+			if (current_build_order.condition == nil or current_build_order.condition()>0) then
+			
+				if (current_build_order[1] == "query") then
+				
+					if (current_build_order[2]==nil or current_build_order[2]()==false) then
+						-- determine if we should pass this list
+						aitrace("Waiting on something")
+						aipoptrace()
+						
+						-- remember the last build number
+						s_lastbuilder_num = s_buildorder_num
+						return
+					end
+				
+				elseif (current_build_order[1] == "capture") then
+					
+					-- check to see if this is enabled
+					if s_components[COMPONENT_Resourcing] == true then
+						-- does nothing
+					end
+					
+				elseif (current_build_order[1] == "produce") then
+					
+					local maxlimit = 1000
+					if ( current_build_order.maxlimit ~= nil ) then
+						maxlimit = current_build_order.maxlimit
+					end
+					
+					bcount = PBG_GetCount( s_selfplayer, current_build_order[3] )
+					aitrace( "Name:"..PBG_GetName(current_build_order[3]).." NUm:"..bcount.." Max:"..maxlimit )
+					if ( bcount < maxlimit ) then
+						Request_Production( s_selfplayer, TGROUP_BuildOrder, TPRIORITY_BuildOrder, current_build_order[2], current_build_order[3] )
+						aitrace("BuildOrder:Do produce order:"..PBG_GetName(current_build_order[3]))
+						print("BuildOrder:Do produce order:"..PBG_GetName(current_build_order[3]) )
+					else
+						print("Produce - but already have ("..bcount..") of "..PBG_GetName(current_build_order[3]) )
+						aitrace("Produce - but already have ("..bcount..") of "..PBG_GetName(current_build_order[3]))
+					end
+					
+				elseif (current_build_order[1] == "building") then
+				
+					-- this should also account for how many are also in-proxy (this does count in-production)
+					local maxlimit = 1000
+					if ( current_build_order.maxlimit ~= nil ) then
+						maxlimit = current_build_order.maxlimit
+					end
+					local bs_style = BS_NearBase
+					if ( current_build_order.bs_style ~= nil ) then
+						bs_style = current_build_order.bs_style
+					end
+					
+					local bcount = PBG_GetCount( s_selfplayer, current_build_order[2] )
+					
+					if (bcount < maxlimit) then
+						Request_Construction( s_selfplayer, TGROUP_BuildOrder, TPRIORITY_BuildOrder, current_build_order[2], bs_style )
+						aitrace("Do build building:"..PBG_GetName(current_build_order[2]))
+					else
+						aitrace("Build - but already have ("..bcount..") of "..PBG_GetName(current_build_order[2]))
+					end
+					
+				end
+			end
+			
+			-- remember the last order we processed
+			s_lastbuilder_num = s_buildorder_num
+		end
+			
+		s_done = true
+			
+	end	
+	
+	aipoptrace()
+	
+end
+
+-- function to determine if the buildorder is done, so the game fallback to the dynamic rule system
+function strategy_buildorder.is_done()
+
+	if (s_done) then
+		
+		local captureOrders = Task_Count( s_selfplayer, TASK_Capture )
+		local captureActive = Task_CountActive( s_selfplayer, TASK_Capture, true )
+		
+		-- count the number of tasks in the buildorder group, not including the capture tasks
+		local tasksInGroup = Task_CountInGroup( s_selfplayer, TGROUP_BuildOrder) - captureOrders
+		local tasksActiveInGroup = Task_CountActiveInGroup( s_selfplayer, TGROUP_BuildOrder) - captureActive
+				
+		aitrace("Buildorder: Tasks:"..tasksInGroup.." Active:"..tasksActiveInGroup)
+		if (tasksActiveInGroup == tasksInGroup) then
+			aitrace("Buildorder: Has been completed!")
+			return true
+		end
+		
+		aitrace("Buildorder: Has been submitted but has not been completed!")
+		return false
+	end
+
+	aitrace("Buildorder: Has not finished submitted!")
+	return false
+end

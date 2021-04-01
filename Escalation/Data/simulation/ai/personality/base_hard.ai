@@ -1,0 +1,12 @@
+
+
+-- overrides of the defaults
+s_personality.start_attack_time = 0
+s_personality.start_attack_time_variance = 0
+s_personality.military_strength_modifier = 1.0
+s_personality.ability_avoidance_percentage = 0.80
+s_personality.demand_variance = 0.20
+s_personality.min_captured_pts_before_securing = 4
+s_personality.max_secured_pts = 6
+s_personality.vp_aggressiveness = 0.7
+s_personality.prefer_power_percentage = 0.6

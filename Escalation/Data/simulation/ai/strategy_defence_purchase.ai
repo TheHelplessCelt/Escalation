@@ -1,0 +1,281 @@
+--
+-- This file is responsible for purchasing secure/defence structures
+--
+
+strategy_defence_purchase = {}
+
+
+function HasInfantry()
+	return (cache.infantry_count and cache.infantry_count > 3)
+end
+
+function AllBunkersUpgraded()
+	return false
+end
+
+-----------------------------------------------
+-- INIT DEFENCE PURCHASE SYSTEM
+
+function strategy_defence_purchase.init()
+	
+	print("strategy_defence_purchase.init")
+	
+	s_securing_structures = s_personality.securing_structures
+	s_defend_structures = s_personality.defend_structures
+		
+	s_special_techtree_rules = SpecialTechBuildingRules
+	s_special_upgrade_rules = SpecialUpgradeRules
+		
+	s_eta_structure_wait_time = s_personality.eta_structure_wait_time
+	s_eta_production_wait_time = s_personality.eta_production_wait_time
+	
+	s_defenceDemand = {}
+end
+
+
+function Util_CountDefendRequests( )
+	
+	local count = 0
+	for k,v in pairs(s_defend_structures) do
+		count = count + Task_CountPBG( s_selfplayer, v.pbg )
+	end
+	
+	return count
+end
+
+function Util_CountSecureRequests( )
+	
+	local count = 0
+	for k,v in pairs(s_securing_structures) do
+		count = count + Task_CountPBG( s_selfplayer, v.pbg )
+	end
+	
+	return count
+end
+
+securing_maxSecureRequests = 2
+defend_maxDefendRequests = 1
+
+-- rules for dealing with the demand for securing structures
+function SecuringStructureDemand()
+	
+	-- is securing disabled?
+	if (s_components[COMPONENT_Securing] == false) then
+		aitrace("Securing Component Disabled!")
+		return
+	end
+
+	local secureRequests = Util_CountSecureRequests()
+	aitrace("SecureReq:"..secureRequests)
+	if (secureRequests >= securing_maxSecureRequests) then
+		aitrace("Reached secure request limit of:"..securing_maxSecureRequests)
+		return
+	end
+	
+	-- determine how many points we have minus the number we have secured
+	local ptsOwned = cache.total_pts_owned
+	local ptsSecured = AIResource_GetNumSecuredCapturePoints( s_selfplayer ) + secureRequests
+	aitrace("PtsOwned:"..ptsOwned.." PtsSecured:"..ptsSecured)
+	
+	-- as the percentage of points we have secured increases, our demand should decrease
+	local numToSecure = ptsOwned - ptsSecured
+	
+	if (numToSecure == 0) then
+		aitrace("Securing: Nothing to secure")
+		return
+	end
+	
+	if (ptsOwned < s_personality.min_captured_pts_before_securing) then
+		aitrace("Personality states we need to capture "..s_personality.min_captured_pts_before_securing.." before securing!")
+		return
+	end
+	
+	if (ptsSecured >= s_personality.max_secured_pts) then
+		aitrace("Personality states max secured points is "..s_personality.max_secured_pts)
+		return
+	end
+
+	local curResources = cache.resources
+	local resRate = cache.resources_rate
+	if ((resRate.requisition < 125 and curResources.requisition < 300)) then
+		aitrace("HealthyEconomyRule: insufficient requisition ("..tostring(curResources.requisition).." : 300) or req-rate ("..tostring(resRate.requisition).." < 125).")
+		return
+	end
+	
+	local curPopcap = cache.current_population_personnel
+	local maxPopcap = cache.max_population_personnel
+	
+	if (curPopcap < (maxPopcap * 0.3)) then
+		aitrace("PopCapRule: Need 30% of pop cap . ("..tostring(curPopcap).." : "..tostring(maxPopcap * 0.3)..").")
+		return
+	end
+	
+	-- of the points that are not secured, are there any worth securing?
+	-- go through each and determine which are worth of securing
+		
+	-- determine if we can build these buildings
+	for i=1, table.getn(s_securing_structures) do
+	
+		local structure = s_securing_structures[i]
+		if (structure and structure.pbg) then
+			
+			if (Construction_CanConstruct(s_selfplayer, structure.pbg)) then
+			
+				local structureETA = GetStructureETA( structure.pbg )
+				aitrace("CAN CONSTRUCT SECURE:"..PBG_GetName( structure.pbg ).. " ETA:"..structureETA )
+					
+				if (structureETA < s_eta_structure_wait_time ) then
+					s_defenceDemand[ structure.pbg ] = {demand=AI_RandRange( 1, 10 )+5, buildstyle = structure.buildstyle, demand_type = DEMAND_Building }
+				end
+			else
+				aitrace("CANNOT CONSTRUCT SECURE:"..PBG_GetName( structure.pbg ) )
+			end
+			
+		end
+		
+	end
+	
+end
+
+function DefenceStructureDemand()
+	
+	-- is securing disabled?
+	if (s_components[COMPONENT_BuildStructures] == false) then
+		aitrace("Defence/BuildStructures Component Disabled!")
+		return
+	end
+	
+	if (state_analysis.military_attackPercentage >= 1) then
+		aitrace("Attack percentage is 1 - turning off defence structures")
+		return
+	end
+	
+	local defendRequests = Util_CountDefendRequests()
+	aitrace("DefendReq:"..defendRequests)
+	if (defendRequests >= defend_maxDefendRequests) then
+		aitrace("Reached defend request limit of:"..defend_maxDefendRequests)
+		return
+	end
+
+	local captured_threshold_25 = GetTeamRelativeFairShareValue(2*0.25, cache.num_teams )
+	
+	if (cache.percentage_pts_captured < captured_threshold_25) then
+		aitrace("DefendRule:Waiting to own at least 25% of map ("..tostring(cache.percentage_pts_captured).."%)")
+		return
+	end
+	
+	
+	-- determine if we can build these buildings
+	for i=1, table.getn(s_defend_structures) do
+	
+		local structure = s_defend_structures[i]
+		if (structure and structure.pbg) then
+			
+			local hit_limit_cap = false
+			if (structure.limit) then
+				local counttotal = UtilPBG_CountTotal( structure.pbg )
+				if (counttotal >= structure.limit) then
+					aitrace("HitLimitCap:"..PBG_GetName( structure.pbg ).." Limit:"..structure.limit.." Count:"..counttotal)
+					hit_limit_cap = true
+				end
+			end
+			
+			if (hit_limit_cap == false and Construction_CanConstruct(s_selfplayer, structure.pbg)) then
+			
+				local structureETA = GetStructureETA( structure.pbg )
+				aitrace("CAN CONSTRUCT DEFEND:"..PBG_GetName( structure.pbg ).. " ETA:"..structureETA )
+				
+				if (structureETA < s_eta_structure_wait_time ) then
+					
+					local newdemand = 5 + AI_RandRange( 1, 5 )
+					
+					-- check condition for this structure
+					if (structure.condition_func==nil or structure.condition_func()) then
+					
+						if (structure.demand_pref) then
+							newdemand = newdemand + structure.demand_pref
+						end
+						
+						s_defenceDemand[ structure.pbg ] = {demand=newdemand, buildstyle = structure.buildstyle, demand_type = DEMAND_Building }
+					else
+						aitrace("--Skipping because 'condition_func()' failed.")					
+					end
+				end
+				
+			else
+				aitrace("CANNOT CONSTRUCT DEFEND:"..PBG_GetName( structure.pbg ) )
+			end
+		end
+	end
+end
+
+function HighestDefenceDemand()
+	
+	local best_pbg = nil
+	local highest_demand_tbl = {demand=-100, buildstyle=nil, demand_type = nil}
+
+	for pbg,demTbl in pairs(s_defenceDemand) do
+		if (pbg and demTbl ~= false) then
+			
+			-- other considerations (?)
+			
+			if (demTbl.demand > highest_demand_tbl.demand) then
+				best_pbg = pbg
+				highest_demand_tbl = demTbl
+			end
+			
+		end
+	end
+	
+	return best_pbg, highest_demand_tbl
+
+end
+
+function strategy_defence_purchase.do_purchase( availableResources )
+
+	aipushtrace("StrategySecurePurchase")
+	
+	AIProfile_Marker4("AIDefencePurchase")
+	
+	-- determine what building/ tech we should get next
+	-- go through each option and choose the one with the highest demand
+	
+	-- if we have builders and our demand for teching up is large enough then lets
+	-- see what we should purchase next, we may want to include
+	
+	-- reset tech demand
+	clear_kv_list(s_defenceDemand)
+	
+	SecuringStructureDemand()
+	DefenceStructureDemand()
+	
+	local pbg, demandTbl = HighestDefenceDemand()
+		
+	if (pbg) then
+
+		aitrace("Highest demand:"..PBG_GetName( pbg ).." Demand:"..demandTbl.demand );
+		
+		local unitCost = AIPlayer_GetStructureCost( s_self_modplayer, pbg )
+		
+		-- determine if this can purchase this item
+		if (not ResourceAmount_Has( availableResources, unitCost )) then
+			aipoptrace()
+			return false, unitCost
+		end
+		
+		-- check to see if this is a securing building
+		if (demandTbl.buildstyle == BS_Secure) then			
+			Request_Secure( s_selfplayer, TGROUP_DefenceSecure, TPRIORITY_DefenceSecure, pbg )
+		else
+			Request_Construction( s_selfplayer, TGROUP_DefenceSecure, TPRIORITY_DefenceSecure, pbg, demandTbl.buildstyle )
+		end
+		
+		aipoptrace()
+		return true, unitCost
+		
+	end
+	
+	aipoptrace()
+	
+	return false
+end

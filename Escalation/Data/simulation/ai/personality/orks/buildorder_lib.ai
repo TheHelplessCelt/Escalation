@@ -1,0 +1,34 @@
+import( 'util/lua_consts.ai' )
+
+-- list of buildorders that can be used by the personalities
+
+orks_buildorder = {
+	
+	-- this build-order isn't optimal, but will add some flavor and randomness, even for Hard/Expert.
+	{
+		name = "Play by my own rules.",
+		list = {
+		}
+	},
+
+}
+
+s_personality.demand_diversity_bonus_multiplier = 0.8
+
+s_personality.securing_structures = 
+{
+	{pbg = EBP.ORK_SECURE, buildstyle = BS_Secure, demand_type = DEMAND_Building},
+	{pbg = EBP.ORK_TURRET, buildstyle = BS_Defend, demand_type = DEMAND_Building},
+	{pbg = EBP.ORK_REINFORCEPOINT, buildstyle = BS_Defend, demand_type = DEMAND_Building},	
+}
+
+s_personality.resource_structures = 
+{
+	{pbg = EBP.ORK_GENERATOR, demand_type = DEMAND_Building,},
+}
+
+s_personality.tech_tier_upgrades = 
+{
+	{pbg = UPG.ORK_TIER2,},
+	{pbg = UPG.ORK_TIER3,},
+}

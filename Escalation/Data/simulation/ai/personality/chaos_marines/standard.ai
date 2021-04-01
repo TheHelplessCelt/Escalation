@@ -1,0 +1,20 @@
+import('personality/base_standard.ai')
+import('personality/chaos_marines/buildorder_lib.ai')
+
+-- randomly choose a build order from the given list defined in the buildorders lib 
+s_personality.buildorder = RandomlyChooseBuildorder( chaos_marines_buildorder )
+
+s_personality.securing_structures = 
+{
+	{pbg = EBP.CSM_SECURE, buildstyle = BS_Secure, demand_type = DEMAND_Building, limit = 3},
+}
+
+s_personality.resource_structures = 
+{
+	{pbg = EBP.CSM_GENERATOR, demand_type = DEMAND_Building, limit = 4},
+}
+
+s_personality.tech_tier_upgrades = 
+{
+	{pbg = UPG.CSM_TIER2,},
+}

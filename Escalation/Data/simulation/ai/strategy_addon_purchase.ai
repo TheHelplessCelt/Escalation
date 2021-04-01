@@ -1,0 +1,197 @@
+
+import("rules_addon_purchase.ai")
+
+strategy_addon_purchase = {}
+
+s_eta_squadaddon_wait_time = 45
+
+strategy_addon_purchase.init = function()
+
+	print("strategy_addon_purchase.init called");
+
+	s_addon_demand_offset_func = SquadAddonUpgradeRules
+	
+	s_eta_squadaddon_wait_time = s_personality.eta_squadaddon_wait_time
+
+	s_addonDemand = {}
+
+end
+
+function HighestAddonDemand()
+	
+	local best_pbg = nil
+	local highest_demand_tbl = {demand=-100000, buildstyle=nil}
+
+	for pbg,demTbl in pairs(s_addonDemand) do
+		if (pbg and demTbl ~= false) then
+			
+			-- other considerations (?)
+			
+			if (demTbl.demand > highest_demand_tbl.demand) then
+				best_pbg = pbg
+				highest_demand_tbl = demTbl
+			end
+			
+		end
+	end
+	
+	return best_pbg, highest_demand_tbl
+
+end
+
+function UpgradeDemandFromRating( upgradePBG )
+	-- estimate value for now
+	return 5.0
+end
+
+function UpdateSquadDemand(PITEM_type)
+
+	-- is upgrading disabled?
+	if (s_components[COMPONENT_BuildAddOns] == false) then
+		aitrace("Build AddOns Component Disabled!")
+		return
+	end
+	
+	local curResources = cache.resources
+	local resRate = cache.resources_rate
+	if ((resRate.requisition < 100 and curResources.requisition < 250)) then
+		aitrace("HealthyEconomyRule: insufficient requisition ("..tostring(curResources.requisition).." : 250) or req-rate ("..tostring(resRate.requisition).." < 100).")
+		return
+	end
+	
+	if ((PITEM_type == PITEM_Upgrade or PITEM_type == PITEM_SquadUpgrade) and (resRate.power < 25 and curResources.power < 75)) then
+		aitrace("Upgrade - HealthyEconomyRule: insufficient power ("..tostring(curResources.power).." : 75) or req-rate ("..tostring(resRate.power).." < 25).")
+		return
+	end
+
+	local captured_threshold_25 = GetTeamRelativeFairShareValue(2*0.25, cache.num_teams )
+
+	if ((PITEM_type == PITEM_Upgrade or PITEM_type == PITEM_SquadUpgrade) and cache.percentage_pts_captured < captured_threshold_25) then
+		aitrace("Upgrade - MapControlRule: Need to own more than 25% of total points. owned:"..tostring(cache.total_pts_owned).." ("..tostring(cache.percentage_pts_captured).."%).")
+		return
+	end
+	
+	local curPopcap = cache.current_population_personnel
+	local maxPopcap = cache.max_population_personnel
+	
+	if ((PITEM_type == PITEM_Upgrade or PITEM_type == PITEM_SquadUpgrade) and curPopcap < (maxPopcap * 0.5)) then
+		aitrace("Upgrade - PopCapRule: Need 50% of pop cap . ("..tostring(curPopcap).." : "..tostring(maxPopcap * 0.5)..").")
+		return
+	end
+
+	local ucount = AIProduction_GetProductionItemCount( s_selfplayer, PITEM_type ) - 1
+	for i=0, ucount do
+		local upgradePBG = AIProduction_GetProductionItemAt( s_selfplayer, PITEM_type, i )
+		
+		-- determine how many of these have been requested already
+		local upgCount = Task_CountPBG( s_selfplayer, upgradePBG )
+		
+		-- extract info about this upgrade, does it match our demands/ strategies
+		if (s_ignore_addons[ PBG_GetID(upgradePBG) ] == nil and upgCount==0 and AIProduction_CanSquadProduce( s_selfplayer, PITEM_type, upgradePBG )) then
+			aitrace("AddonList"..i..":"..PBG_GetName( upgradePBG ))
+			
+			local productionETA = GetProductionETA( PITEM_type, upgradePBG )
+			
+			if (productionETA < s_eta_squadaddon_wait_time) then
+				
+				-- decrease demand by how many we already have
+				local totalCount = PBG_GetCount( s_selfplayer, upgradePBG )
+				local totalSquads = Military_SquadTotalCount( s_selfplayer )
+				
+				for squadIdx = 0, totalSquads-1 do
+					local aiSquad = Military_GetAISquadAtIndex( s_selfplayer, squadIdx )
+					local aiSquadProductionCount = Task_CountAISquadProduction(aiSquad)
+					
+					if (aiSquad ~= nil and aiSquadProductionCount == 0 and AIProduction_CanAISquadProduce( aiSquad, PITEM_type, upgradePBG )) then
+						local newdemand = CalcSquadUpgradeDemand( upgradePBG, aiSquad )
+
+						local rating_demand = UpgradeDemandFromRating( upgradePBG )
+						aitrace("BaseUpgradeDemand:"..newdemand.." RatingDemand:"..rating_demand)
+				
+						local totalDemand = newdemand + rating_demand
+				
+						local demandoffset = 0
+						if (s_addon_demand_offset_func) then
+							demandoffset = s_addon_demand_offset_func( upgradePBG, totalDemand )
+							aitrace("Addon demand offset:"..demandoffset)
+						end
+				
+						totalDemand = totalDemand + demandoffset
+				
+						aitrace("Addon demand:"..totalDemand)
+						
+						if (newdemand > 1 and totalDemand > 0) then
+							s_addonDemand[ upgradePBG ] = {demand=totalDemand, pitem_type = PITEM_type, ai_squad = aiSquad}
+						else
+							aitrace("Rejected Addon for insufficient demand.")
+						end
+					end
+				end
+			else
+				aitrace("Addon Rejected By ETA:"..productionETA.." needed "..s_eta_squadaddon_wait_time)
+			end
+		end
+	end
+end
+
+function strategy_addon_purchase.do_purchase( availableResources )
+	
+	aitrace("Addon Purchase Strategy")
+	-- determine what addons we can purchase depending on the units we have available in the world
+	-- possibly we want to mix the demands for these with the units, and determine if this will 
+	-- be more beneficial to have a better unit vs more units
+	
+	-- I'd imagine as we approach the unit cap, our demand for addons would increase
+	
+	-- Some units are only good with their addon (possibly we can create some units in batches; unit+addon) and add these 
+	-- purchases together as one (my guess is that if this is the case, it should be redesigned)
+	
+	-- reset addon demand
+	clear_kv_list(s_addonDemand)
+	
+	UpdateSquadDemand(PITEM_Upgrade)
+	UpdateSquadDemand(PITEM_SquadUpgrade)
+	
+	local pbg, demandTbl = HighestAddonDemand()
+
+	if (pbg) then
+	
+		aitrace("Highest demand:"..PBG_GetName( pbg ).." Demand:"..demandTbl.demand );
+		
+		-- only want to request X number of addons
+		local upgradeCost = AIPlayer_GetProductionCost( s_self_modplayer, demandTbl.pitem_type, pbg )
+		
+		-- determine if this can purchase this item
+		if (not ResourceAmount_Has( availableResources, upgradeCost )) then
+			return false, upgradeCost
+		end
+		
+		if (demandTbl.ai_squad == nil) then
+			if (AIProduction_CanProduceNow( s_selfplayer, demandTbl.pitem_type, pbg )) then
+			
+				aitrace("Producing:"..PBG_GetName( pbg ))
+				Request_Production( s_selfplayer, TGROUP_AddOns, TPRIORITY_AddOns, demandTbl.pitem_type, pbg )
+			
+				return true, upgradeCost
+			else
+				aitrace("Addon could not be produced at this moment - skipping")
+			end
+		else
+			if (AIProduction_CanAISquadProduceNow( demandTbl.ai_squad, demandTbl.pitem_type, pbg )) then
+			
+				aitrace("Producing:"..PBG_GetName( pbg ).." for Squad: "..World_GetPropertyBagGroupName(AISquad_ConvertToPBG(demandTbl.ai_squad)))
+				Request_AISquadProduction( demandTbl.ai_squad, TGROUP_AddOns, TPRIORITY_AddOns, demandTbl.pitem_type, pbg )
+			
+				return true, upgradeCost
+			else
+				aitrace("Addon squad could not be produced at this moment - skipping")
+			end
+		end
+		
+	end
+	
+	aipoptrace()
+	
+	return false
+end
+

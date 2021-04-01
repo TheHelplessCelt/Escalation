@@ -1,0 +1,6 @@
+import('personality/base_hardest.ai')
+import('personality/chaos_marines/buildorder_lib.ai')
+
+-- randomly choose a build order from the given list defined in the buildorders lib 
+s_personality.buildorder = RandomlyChooseBuildorder( chaos_marines_buildorder )
+

@@ -1,0 +1,187 @@
+
+import( 'personality/buildorder_conditions_lib.ai' )
+
+------------------------------------------------------------------------------------------------
+-- This is the global personality info table, it stores information regarding
+-- all systems and can be different per race, per level of difficult, 
+-- per game type, per map and modified by SP missions to their liking
+-- This info is very much like modtuning data
+--
+-- The goal for this would be to have a hierarchy of personality variables. We could
+-- define a small set of variables that in turn set the rest of the personality variables
+-- so that they work together. For example: we can have 'aggressiveness', 'tech vs unit rate', 
+-- 'economic importance', etc. And these in turn would choose the appropriate command-tree,
+-- tech tree, rush vars, attacktimes, etc. And then these values can be
+-- optionally overwritten for finer tuned control.
+--
+-- NOTE: there will still be other variables that don't fit within these generalizations.
+------------------------------------------------------------------------------------------------
+
+s_personality = 
+{
+	--------------------------------
+	-- build order info
+	buildorder = {},   						-- builder order the AI will use
+	
+	defensiveness = 0.3,					-- how defensive a player this AI is (from 0-1) with 1 being very defensive
+	vp_aggressiveness = 0.6,				-- how hard will the player go for VP (from 0-1) NOTE: they will still go after them to prevent a loss
+	
+	--------------------------------
+	-- military info
+	start_attack_time = 4*60,				-- when the AI will attack for the first time (minimum)
+	start_attack_time_variance = 2*60,		-- what random variation of time should be added to the start attack time
+	military_strength_modifier = 1.2,		-- how many times more powerful should the AI military be before attacking a target
+	
+	default_attack_percentage = 0.5,		-- when attacking what is the default percentage
+	max_attack_percentage = 1.0, 			-- [0,1] what attack percentage do we never want to go over no matter what
+	attack_percentage_increment_per_minute = 0, -- attack percentage increase each minute
+	
+	defend_prefer_threat = true,
+	attack_prefer_threat = false,
+	
+	--------------------------------
+	-- unit purchasing
+	demand_variance = 0.0,						-- how much variance in the demand this personality will overlook (eg. units with a demand of 10 and 12 will both be considered in variances are greater than 0.2)
+	demand_diversity_bonus_multiplier = 0.0, 	-- demand bonus for squads types with zero population (bonus is fraction of squads actual demand * total number of squads)
+	eta_unit_wait_time = 100,					-- how long will AI wait for the unit it wants
+	eta_production_wait_time = 90,				-- how long will AI wait for the production item it wants (upgrades,etc)
+	eta_structure_wait_time = 90,				-- how long will AI wait for the structure it wants
+	eta_squadaddon_wait_time = 40,				-- how long will AI wait for a squad-add (flamethrower, etc)
+	purchase_delay_pace = 0,					-- the amount of seconds between purchase choices
+	min_military_value_start = -1,				-- used to cap the military_value of the AI, this is the military value the AI is allowed to have without constraint (this grows over time)
+	min_military_value_increment_per_minute = 0,-- this is the amount the allowed military_value the AI will increase by every minute (starts at start_attack_time)
+	glue_military_percentage = 1,				-- [-N,N] if the AI is this much better than the enemy it will stop producing military units
+	
+	--------------------------------
+	-- resourcing/securing
+	min_captured_pts_before_securing = 2,	-- how many points should the AI capture before deciding to secure
+	min_percentage_pts_captured_for_vp = 0.35, -- percentage of map to control before demanding victory points
+	max_secured_pts = 16,					-- how many points max should the AI secure
+	default_percentage_to_capture = 1,		-- [0,1] capture percentage to start with (which can then grow if an increment is defined)
+	max_percentage_to_capture = 1,			-- [0-1], how much of the map we will stop at capturing
+	max_percentage_vp_wanted = 1,			-- [0-1], how many VP points the AI will want to grab
+	vp_ticker_warning_level = 300,			-- how many tickers should be left before we start really worrying about them (increasing their priority)
+	prefer_power_percentage = 0.5,						-- [0-1], preferred ratio of power to requisition points.
+	max_num_capturers = 8,					-- the max number of capturers we will ever have (used to slow AI pace)
+	capture_percentage_growth_start_time = 0,-- the time at which we start to apply the capture percentage growth
+	capture_percentage_growth_per_min = 0.0, -- the increase in capture percentage we apply every minute after growth timer expires
+	securing_structures = {}, -- the structures to build on capture points {pbg = World_GetPBG("name"), buildstyle = BS_*, demand_type = DEMAND_*}
+	defend_structures = {}, --  defend structures to build {pbg = World_GetPBG("name"), buildstyle=BS_*, demand_type = DEMAND_*, demand_pref = #, condition_func = func, limit = #},
+	resource_structures = {}, -- resource generating structures to build on capture points {pbg = World_GetPBG("name"), demand_type = DEMAND_*, condition_func = func, limit = #}
+	tech_tier_upgrades = {}, -- tech-tree upgrades {pbg = World_GetPBG("name"), condition_func = func}
+							-- NOTE: tech_tier_upgrades[1] == tier_2 upgrade, tech_tier_upgrades[2] == tier_3 upgrade, ... 
+	--------------------------------
+	-- tactics info
+	ability_avoidance_percentage = 0.5, 		-- what percentage of the time will the AI try to avoid avoidable abilities (artillery)
+	tankmove_tactic_enabled = true,			-- is the tankmove tactic enabled
+	
+	
+	-- combat state update
+	clump_scan_params =						-- currently this clump data is used by tactics for targeting
+		{
+			clump_scan_ticks = 40,			-- how often the player updates cached clumps for combat tactics
+			threat_weighting=1.0, 
+			importance_weighting=0.5,
+			must_be_seen=false,
+			min_threat = 15
+		},
+
+	--------------------------------
+	-- squad/ entity limits (could be seperate calls)
+}
+
+
+
+
+-- this loads the proper personality file based on the race, LOD, scenario and some randomness
+function s_personality.Create()
+
+	print("Creating personality file...")
+	local diffLevel = AIPlayer_GetDifficultyLevel( s_selfplayer )
+	
+	local raceStr = s_current_race
+	local diffStr = "easy"
+	
+	if ( diffLevel == AD_Easy ) then
+		diffStr = "easy"
+	elseif (diffLevel == AD_Standard ) then
+		diffStr = "standard"
+	elseif (diffLevel == AD_Hard ) then
+		diffStr = "hard"
+	elseif (diffLevel == AD_Hardest ) then
+		diffStr = "hardest"
+	end
+	
+	local personalityFile = "personality/"..raceStr.."/"..diffStr..".ai"
+	print("Loading personality file:"..personalityFile)
+	
+	import( personalityFile )
+		
+	-- WE COULD EITHER 'ADD' PERSONALITY, MEANING WE COULD HAVE A SECOND FILE THAT JUST
+	-- MODIFIES THE CURRENT PERSONALITY (POSSIBLY IT ONLY MODIFIES MILITARY GOALS?) OR IT
+	-- COULD BE A WHOLE NEW FILE, ONE FOR EACH RACE/LOD.
+	
+	-- attempt to load map specific AI file (this can override any of the above information)
+	--LoadAIScenarioFile()
+	
+end
+
+function RandomlyChooseBuildorder( buildorder_list )
+
+	local buildorder_count = table.getn(buildorder_list)
+	print("Found "..buildorder_count.." build orders")
+	
+	local valid_buildorders = 0
+	local valid_buildorder_list = {}
+	
+	if (buildorder_count > 0) then
+	
+		for i=1, buildorder_count do 
+			-- run through all the buildorders and call its conditionals, if any return false
+			-- then don't choose this buildorder
+			local bSkip = false
+			local bOrder = buildorder_list[i]
+		
+			local demand = 0
+			if (bOrder.filters) then
+				for k,v in pairs(bOrder.filters) do
+					if (v and type(v)=="function") then
+						local val = v()
+						if (val<0) then
+							bSkip = true
+							break
+						end
+						demand = demand + val
+					end
+				end
+			end
+			
+			print("Buildorder:"..bOrder.name.." Demand:"..demand)
+			
+			-- if we didn't skip this build order, lets count it
+			if (bSkip==false) then
+				valid_buildorders = valid_buildorders+1
+				valid_buildorder_list[valid_buildorders] = bOrder
+			end
+		end
+	end
+	
+	print("Valid buildorders:"..valid_buildorders)
+	if (valid_buildorders>0) then
+		
+		local randbuildorder = AI_RandMax(valid_buildorders)+1
+		print("RandBuildOrder:"..randbuildorder)
+		local chosen_buildorder = valid_buildorder_list[randbuildorder]
+		if (chosen_buildorder) then
+			print("Choosing buildorder "..randbuildorder.." Name:"..chosen_buildorder.name)
+			-- overrides of the defaults
+			return chosen_buildorder
+		else
+			print("Hmm.. had buildorders to choose from, just didn't find it!")
+		end
+		
+	end
+
+	
+end
+

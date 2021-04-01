@@ -1,0 +1,178 @@
+---------------------------------------------------------------------
+-- cache.ai
+-- 
+--  This file is the place to put all vars that get calculated many times
+--  every frame. This calculates them once so they can be used
+--  on this frame.
+--
+
+cache = 
+{
+	-- some values may be used elsewhere before fully initialized
+	vp_owned_self = 0,
+	vp_owned_enemy = 0,
+	current_population_personnel = 0,
+	max_population_personnel = 0,
+	all_power_resource_pts_total = 0,
+	all_requisition_resource_pts_total = 0,
+	total_power_pts_owned = 0,
+	total_requisition_pts_owned = 0,
+	
+	num_teams = 0,
+}
+
+-- calc VPs after game starts because the SCAR rules aren't run until pre-sim so we must wait
+cache.simulate_pre = function()
+	
+	print("SimulatePre")
+	cache.vp_total = AIResource_GetVictoryPointTotal( s_selfplayer )
+	
+	-- this is all the points in the world including VP
+	cache.all_capture_pts_total = AIResource_GetCapturePointsTotal( s_selfplayer )
+	cache.all_resource_pts_total = cache.all_capture_pts_total - cache.vp_total
+	cache.all_power_resource_pts_total = AIResource_GetCapturePointsTotalOfType( s_selfplayer, CPT_PowerPoint )
+	cache.all_requisition_resource_pts_total = AIResource_GetCapturePointsTotalOfType( s_selfplayer, CPT_RequisitionPoint )
+	
+	cache.num_teams = AI_GetTeamsCount()
+	
+	cache.max_vp_tickets = 0
+	cache.self_vp_tickers = 0
+	cache.enemy_vp_tickers = 0		
+	if (cache.vp_total > 0) then
+		cache.max_vp_tickets = WinCondition_GetMaxVPTickets()
+		cache.self_vp_tickers = WinCondition_GetVPTicketsUntilWin( s_self_team )
+		cache.primary_enemy_team = WinCondition_GetBestVPEnemyTeam( s_self_team )
+		cache.enemy_vp_tickers = WinCondition_GetVPTicketsUntilWin( cache.primary_enemy_team )
+	else
+		cache.primary_enemy_team = 1-s_self_team
+	end
+	
+	print(string.format("VP(%d) All(%d) Tickets(%d)", cache.vp_total, cache.all_capture_pts_total, cache.max_vp_tickets ) )
+	
+end
+
+cache.init = function()
+
+	---------------------------------------------------
+	-- counts the types of other players in the game
+	
+	cache.num_allies = -1 -- to ignore self
+	cache.num_enemies = 0
+	
+	local pcount = World_GetPlayerCount()
+	for i=1,pcount do 
+		local player = World_GetPlayerAt( i )
+		if (Player_IsAlive(player)) then
+			if (Player_GetTeam(player) == s_self_team) then
+				cache.num_allies = cache.num_allies + 1
+			else
+				cache.num_enemies = cache.num_enemies + 1
+			end
+		end
+	end
+end
+
+
+-- this caches a bunch of data that gets used every frame and should be cached instead to avoid recalculating
+-- all variables that are cached within this function are prepended with cache.***
+cache.perframe_data = function()
+	
+	aipushtrace("Caching Per Frame Data")
+	
+	-----------------------------------------
+	-- military cache
+	cache.military_value = PlayerStats_GetTotalAntiClassRatingSum(s_self_modplayer)
+	cache.military_team_diff = ArmyEval_AITeamVsEnemyDiff()
+	cache.military_percent_value = 0
+	if (cache.military_value > 0) then
+		cache.military_percent_value = ArmyEval_AITeamVsClosestEnemyPercentageDiff()
+	end
+	aitrace("cache.military_value:"..cache.military_value)
+	aitrace("cache.military_team_diff:"..cache.military_team_diff)
+	aitrace("cache.military_percent_value:"..cache.military_percent_value)
+		
+	-- this gets all the really spawned military units
+	cache.military_count = Military_SquadTotalCount( s_selfplayer )
+	
+	aitrace("cache.military_count:"..cache.military_count)
+	
+	cache.current_population_personnel = AIResource_GetCurrentPopulation( s_selfplayer, CT_Personnel )
+	cache.max_population_personnel = AIResource_GetMaxPopulation( s_selfplayer, CT_Personnel )
+	aitrace("cache.current_population_personnel:"..cache.current_population_personnel)
+	aitrace("cache.max_population_personnel:"..cache.max_population_personnel)
+	
+	aitrace("cache.num_teams:"..cache.num_teams)
+	aitrace("cache.num_allies:"..cache.num_allies)
+	aitrace("cache.num_enemies:"..cache.num_enemies)
+	
+	-----------------------------------------
+	-- resourcing cache
+	
+	cache.total_pts_to_capture = Capture_GetNumPriorityCapturePoints(s_selfplayer)  -- points with priority
+	cache.total_pts_owned = AIResource_GetNumOwnedCapturePoints( s_selfplayer )
+	cache.total_requisition_pts_owned = AIResource_GetNumOwnedCapturePointsOfType( s_selfplayer, CPT_RequisitionPoint);
+	cache.total_power_pts_owned = AIResource_GetNumOwnedCapturePointsOfType( s_selfplayer, CPT_PowerPoint);
+	cache.total_pts_secured = AIResource_GetNumSecuredCapturePoints( s_selfplayer )
+	cache.total_pts_secured_w_addon_capacity = AIResource_GetNumSecuredCapturePointsForAddOns( s_selfplayer )
+	aitrace("cache.total_pts_to_capture:"..cache.total_pts_to_capture)
+	aitrace("cache.total_pts_owned:"..cache.total_pts_owned)
+	aitrace("cache.total_requisition_pts_owned:"..cache.total_requisition_pts_owned)	
+	aitrace("cache.total_power_pts_owned:"..cache.total_power_pts_owned)	
+	aitrace("cache.total_pts_secured:"..cache.total_pts_secured)
+	aitrace("cache.total_pts_secured_w_addon_capacity:"..cache.total_pts_secured_w_addon_capacity)
+
+	cache.percentage_pts_captured = 0 
+	if (cache.all_capture_pts_total>0) then
+		cache.percentage_pts_captured = cache.total_pts_owned/cache.all_capture_pts_total
+	end
+	aitrace("cache.percentage_pts_captured:"..cache.percentage_pts_captured)
+	aitrace("cache.all_capture_pts_total:"..cache.all_capture_pts_total)
+	aitrace("cache.all_resource_pts_total:"..cache.all_resource_pts_total)
+	aitrace("cache.all_power_resource_pts_total:"..cache.all_power_resource_pts_total)
+	aitrace("cache.all_requisition_resource_pts_total:"..cache.all_requisition_resource_pts_total)
+	
+	if (cache.vp_total > 0) then
+		cache.primary_enemy_team = WinCondition_GetBestVPEnemyTeam( s_self_team )
+		cache.vp_owned_self = AIResource_GetVictoryPointsOwnedBy( s_selfplayer, s_self_team )
+		cache.vp_owned_enemy = AIResource_GetVictoryPointsOwnedBy( s_selfplayer, cache.primary_enemy_team )
+		cache.self_vp_tickers = WinCondition_GetVPTicketsUntilWin( s_self_team )
+		cache.enemy_vp_tickers = WinCondition_GetVPTicketsUntilWin( cache.primary_enemy_team )
+	else
+		cache.vp_owned_self = 0
+		cache.vp_owned_enemy = 0
+		cache.self_vp_tickers = 0
+		cache.enemy_vp_tickers = 0
+		cache.primary_enemy_team = 1-s_self_team 
+	end
+	aitrace("cache.primary_enemy_team:"..cache.primary_enemy_team)
+	aitrace("cache.vp_total:"..cache.vp_total)
+	aitrace("cache.vp_owned_self:"..cache.vp_owned_self)
+	aitrace("cache.vp_owned_enemy:"..cache.vp_owned_enemy)
+	aitrace("cache.max_vp_tickets:"..cache.max_vp_tickets)
+	aitrace("cache.self_vp_tickers:"..cache.self_vp_tickers)
+	aitrace("cache.enemy_vp_tickers:"..cache.enemy_vp_tickers)
+
+	cache.resources = AIResource_GetCurrentResources( s_selfplayer )
+	cache.resources_rate = ResourceAmount_Mult(AIResource_GetCurrentResourceRate( s_selfplayer ), 60)
+	aitrace("cache.resources: "..res_to_str(cache.resources))
+	aitrace("cache.resources_rate: req:"..res_to_str(cache.resources_rate))
+	
+	--
+	
+	sg_soldiers = AIPlayer_GetSoldierSquads( s_selfplayer )
+	cache.infantry_count = SGroup_Count( sg_soldiers )
+	aitrace("cache.infantry_count (sg_soldiers):"..cache.infantry_count)
+
+	sg_vehicles = AIPlayer_GetVehicleSquads( s_selfplayer )
+	cache.vehicle_count = SGroup_Count( sg_vehicles )
+	aitrace("cache.vehicle_count (sg_vehicles):"..cache.vehicle_count)
+	
+	cache.threat_at_base = AIPlayer_ThreatAtBase( s_selfplayer )
+	aitrace("cache.threat_at_base:"..cache.threat_at_base)
+	
+	cache.tech_tier_level = CalculateCurrentTechLevel();
+	aitrace("cache.tech_tier_level:"..cache.tech_tier_level)
+	
+	aipoptrace()
+	
+end

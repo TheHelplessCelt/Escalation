@@ -1,0 +1,206 @@
+----------------------------------------------------------------------------------------------------------------
+-- Squad helper functions
+-- (c) 2003 Relic Entertainment Inc.
+
+--? @group Squad
+
+----------------------------------------------------------------------------------------------------------------
+-- Squad helper functions
+
+--? @shortdesc Returns true if ALL or ANY troopers in a squad are in cover.
+--? @extdesc Set all to true to check if all troopers are in cover or set to false to check if any.
+--? @args SquadID squadId, Boolean all
+--? @result Boolean
+function Squad_IsInCover( squadId, all )
+	local n = Squad_Count( squadId )
+	local i
+	for i = 1, n do
+		if( Squad_GetCoverType( squadId, n-1 ) == CT_None ) then
+			if( all ) then return false end
+		else
+			if( any ) then return true end
+		end
+	end
+	
+	return all
+end
+
+
+--? @shortdesc Warps a squad immediately to a new position [optionally facing the given position]
+--? @args SquadID squad, Position pos, [Position toward]
+--? @result Void
+function Squad_WarpToPos(squad, pos, toward)
+
+    toward = toward or pos
+	Squad_DeSpawn(squad)
+	Squad_SpawnToward(squad, pos, toward)
+	
+end
+
+--? @shortdesc Warps a squad immediately to a marker [optionally facing the given position]
+--? @args SquadID squad, MarkerID marker, [Position toward]
+--? @result Void
+function Squad_WarpToMarker(squad, marker, toward)
+
+	Squad_DeSpawn(squad)
+    local pos = Marker_GetPosition(marker)
+    toward = toward or pos
+	Squad_SpawnToward(squad, Marker_GetPosition(marker), toward )
+	
+end
+
+
+--? @shortdesc Set invulnerability on the squad. Reset time is in seconds. If it it set, the invulnerability will expire after this time.
+--? @args SquadID squad, Bool enable, Float reset_time
+--? @result Void
+function Squad_SetInvulnerable(squad, enable, reset_time)
+
+	local cap
+	if ( enable == true ) then
+		cap = 1.0
+	elseif (enable == false) then
+		cap = 0.0
+	else
+		cap = enable
+	end
+	
+	Squad_SetInvulnerableMinCap( squad, cap, reset_time )
+end
+
+
+--? @shortdesc Check if the squad is invulnerable or not
+--? @args SquadID squad
+--? @result Bool
+function Squad_GetInvulnerable(squad)
+
+	return ( Squad_GetInvulnerableMinCap( squad ) == 1.0 )
+end
+
+
+
+--? @shortdesc Returns true if the squad is currently retreating
+--? @args SquadID squadid
+--? @result Boolean
+function Squad_IsRetreating(squad)
+
+	if Squad_HasActiveCommand(squad) then
+		
+		if Squad_GetActiveCommand(squad) == SQUADSTATEID_Retreat then
+			return true
+		end
+		
+	end
+	
+end
+
+
+--? @shortdesc Returns a table of SlotItem ID's that this squad currently owns
+--? @args SquadID squadid
+--? @result LuaTable
+function Squad_GetSlotItemsTable(squadid)
+
+	local slotItems = {}
+	local itemcount = Squad_GetSlotItemCount(squadid)
+	for i = 1, itemcount do
+		
+		local item = Squad_GetSlotItemAt(squadid, i)
+		table.insert(slotItems, item)
+		
+	end
+	
+	return slotItems
+	
+end
+
+
+--? @shortdesc Gives all slot items in a table to the squad. The table should come from Squad_GetSlotItemsTable
+--? @args SquadID squadid, LuaTable itemTable
+--? @result Void
+function Squad_GiveSlotItemsFromTable(squadid, itemTable)
+	
+	for i = 1, table.getn(itemTable) do
+		
+		Squad_GiveSlotItem(squadid, itemTable[i])
+		
+	end
+	
+end
+
+
+--? @shortdesc Returns a position relative to a squad's current position and orientation. see LuaConsts.scar for explanation of 'offset' parameter.
+--? @args SquadID squad, Integer offset, Real distance
+--? @result Position
+function Squad_GetOffsetPosition(squad, offset, distance)
+	return World_GetOffsetPosition(Squad_GetPosition(squad), Squad_GetHeading(squad), offset, distance)
+end
+
+
+
+
+
+
+
+--? @group SGroup
+
+--? @shortdesc Warps all members of an SGroup immediately to a new position [optionally facing the given position]
+--? @args SGroupID sgroup, Position pos, [Position toward]
+--? @result Void
+function SGroup_WarpToPos(sgroup, pos, toward)
+
+    toward = toward or pos
+	local function _WarpMe(gid, idx, sid)
+		Squad_WarpToPos(sid, pos, toward)
+	end
+	
+	Cmd_StopSquads(sgroup)
+	SGroup_ForEach(sgroup, _WarpMe)
+	
+end
+
+--? @shortdesc Warps all members of an SGroup immediately to a marker [optionally facing the given position]
+--? @args SGroupID sgroup, MarkerID marker, [Position toward]
+--? @result Void
+function SGroup_WarpToMarker(sgroup, marker)
+
+	local pos = Marker_GetPosition(marker)
+    toward = toward or pos
+	local function _WarpMe(gid, idx, sid)
+		Squad_WarpToPos(sid, pos, toward)
+	end
+	
+	Cmd_StopSquads(sgroup)
+	SGroup_ForEach(sgroup, _WarpMe)
+	
+end
+
+
+--? @shortdesc Returns true if ANY or ALL of the squads in an SGroup are currently retreating
+--? @args SGroupID sgroup, Boolean all
+--? @result Boolean
+function SGroup_IsRetreating(sgroup, all)
+
+	local _CheckSquad = function (gid, idx, sid)
+		return Squad_IsRetreating(sid)
+	end
+	
+	return SGroup_ForEachAllOrAny(sgroup, all, _CheckSquad)
+	
+end
+
+function Squad_GrantLevel( squad )
+	local lvl = Leveling_GetSquadLevel( squad )
+	Leveling_SetSquadLevel( squad, lvl + 1 )
+end
+
+function Squad_GrantLevel_Action( caster, target )
+	local squad = nil
+	if scartype( target ) == ST_ENTITY then
+		squad = Entity_GetSquad( target )
+	elseif scartype( target ) == ST_SQUAD then
+		squad = target
+	end
+	if squad ~= nil then
+		Squad_GrantLevel( squad )
+	end
+	return false
+end
