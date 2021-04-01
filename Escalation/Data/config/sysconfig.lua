@@ -12,7 +12,11 @@ configuration =
 	{	setting = "AntiAliasing",			value = 0 },
 	{	setting = "TextureDetail",			value = 3 },
 	{	setting = "Shadows",				value = 2 },
+<<<<<<< HEAD
 	{   setting = "use64BitRT",		    	value = 1 },
+=======
+	{   setting = "use64BitRT",		    	value = 0 },
+>>>>>>> 10a1f10a09e368eda766efc797336f2e9958765e
 	{	setting = "Reflections",			value = 1 },
 	{	setting = "PostProcessing",			value = 1 },
 	{	setting = "ObjectScarring",			value = 1 },

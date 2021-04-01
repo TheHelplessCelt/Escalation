@@ -16,12 +16,20 @@ archive.01 = Escalation\Archives\GameAttrib_orig.sga
 
 [sound:common]
 folder.01 = GameAssets\Data\Sound
+<<<<<<< HEAD
 archive.01 = Escalation\Archives\escalation_sound.sga
 archive.02 = GameAssets\Archives\GameSoundContainers.sga
 archive.03 = GameAssets\Archives\003_sound.sga
 archive.04 = GameAssets\Archives\002_sound.sga
 archive.05 = GameAssets\Archives\001_sound.sga
 archive.06 = GameAssets\Archives\000_sound.sga
+=======
+archive.01 = GameAssets\Archives\GameSoundContainers.sga
+archive.02 = GameAssets\Archives\003_sound.sga
+archive.03 = GameAssets\Archives\002_sound.sga
+archive.04 = GameAssets\Archives\001_sound.sga
+archive.05 = GameAssets\Archives\000_sound.sga
+>>>>>>> 10a1f10a09e368eda766efc797336f2e9958765e
 
 [sound:english]
 folder.01 = GameAssets\Locale\English\Sound
