@@ -1,0 +1,38 @@
+Images = 
+{
+	"v2.15",
+	"for",
+	"SDK",
+	"v2.2.56,",
+	"(c)",
+	"2006-2008",
+	"Scaleform",
+	"Corporation
+This",
+	"program",
+	"uses",
+	"NVIDIA",
+	"Texture",
+	"Tools",
+	"2,",
+	"(c)",
+	"2007",
+	"NVIDIA",
+	"Corporation
+Loading",
+	"SWF",
+	"file:",
+	"d:\\dow2-public\\assets\\ui\\movies\\fonts\\master_fonts.swf",
+	"-",
+	"
+Images",
+	":",
+	"0",
+	"
+Gradient",
+	"textures",
+	":",
+	"0",
+	"
+"
+}
