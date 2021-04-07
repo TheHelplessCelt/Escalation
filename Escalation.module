@@ -26,12 +26,13 @@ archive.06 = GameAssets\Archives\000_sound.sga
 [sound:english]
 folder.01 = GameAssets\Locale\English\Sound
 archive.01 = GameAssets\Locale\English\English_GameSpeechContainers.sga
-archive.02 = GameAssets\Locale\English\English_002_speech_campaign.sga
-archive.03 = GameAssets\Locale\English\English_002_speech.sga
-archive.04 = GameAssets\Locale\English\English_001_speech_campaign.sga
-archive.05 = GameAssets\Locale\English\English_001_speech.sga
-archive.06 = GameAssets\Locale\English\English_000_speech_campaign.sga
-archive.07 = GameAssets\Locale\English\English_000_speech.sga
+archive.02 = Escalation\Archives\escalation_speech.sga
+archive.03 = GameAssets\Locale\English\English_002_speech_campaign.sga
+archive.04 = GameAssets\Locale\English\English_002_speech.sga
+archive.05 = GameAssets\Locale\English\English_001_speech_campaign.sga
+archive.06 = GameAssets\Locale\English\English_001_speech.sga
+archive.07 = GameAssets\Locale\English\English_000_speech_campaign.sga
+archive.08 = GameAssets\Locale\English\English_000_speech.sga
 
 [sound:french]
 folder.01 = GameAssets\Locale\French\Sound

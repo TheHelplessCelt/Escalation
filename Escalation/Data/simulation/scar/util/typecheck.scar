@@ -1,0 +1,133 @@
+--~ Automatic runtime type checking on function arguments for LUA.
+--~ Borrowed from http://lua-users.org/wiki/LuaTypeChecking by Jeff Hill.
+--~
+--~ SEE: http://lua-users.org/wiki/LuaTypeChecking
+--~ The basic idea is to do this:
+--~
+--~ function my_add(x, y)
+--~ 	return x+y
+--~ end
+--~ my_add = typecheck( ST_NUMBER, ST_NUMBER )( my_add )
+--~
+--~ my_add( 5, 7 ) -- ok, works fine
+--~ my_add( "five", "seven" ) -- fails with a descriptive error.
+--~
+
+--? @shortdesc Add runtime type checking to a lua function; my_function = typecheck( ST_NUMBER, ST_STRING )( my_function )
+function typecheck( ... )
+	local typeList = { ... }
+	return function( func )
+		if typecheck_disable then
+			return func
+		else
+			return function( ... )
+				argList = { ... }
+				typecheck_run( typeList, argList )
+				return func( ... )
+			end
+		end
+	end
+end
+-- global flag to disable ALL typechecking, everywhere.
+-- Use with caution, young Jedi; the dark side is strong with this one.
+typecheck_disable = true
+
+
+-- Perform the actual type check
+-- typeList is a list of type constants that should match the arguments
+-- argList is a list of argument values
+-- Makes sure they line up.
+function typecheck_run( typeList, argList )
+	local function typecheck_type_to_string( typeName )
+		if type( typeName ) == "table" then
+			result = ""
+			for k,v in pairs(typeName) do 
+				if result ~= "" then
+					result = result..", "
+				end
+				result = result..typecheck_type_to_string( v )
+			end
+			return result
+		else
+			return scartype_constant_tostring( typeName )
+		end
+	end
+	
+	
+	local function typecheck_error( index, argument, argument_Type, expected_Type )
+		local errorMessage = "Type mismatch on argument "..tostring( index ).."."
+		errorMessage = errorMessage.." Got type \"" .. scartype_tostring( argument ) .. "\""
+		errorMessage = errorMessage.." with value \""..tostring( argument ).."\"."
+		errorMessage = errorMessage.." Expected type \"" .. typecheck_type_to_string( expected_Type ) .. "\"."
+		fatal( errorMessage )
+	end
+	
+
+	function typecheck_value( argument, argumentType, expectedType )
+		if type( expectedType ) == "table" then
+			for k,typeName in pairs(expectedType) do
+				if typecheck_value( argument, argumentType, typeName ) then
+					return true -- If any type matches, we're ok
+				end
+			end
+			return false -- All types in the list failed, we fail the check.
+		elseif expectedType == ANY then
+			return true	-- always ok, don't care about types.
+		elseif argumentType == expectedType then
+			return true -- Types do match, we're ok
+		else
+			return false -- Did not match types
+		end
+	end
+
+	for index, expected_type in pairs( typeList ) do
+		local argument = argList[index]
+		local argument_type = scartype( argument )
+		if not typecheck_value( argument, argument_type, expected_type ) then
+			typecheck_error( index, argument, argument_type, expected_type ) -- Fatals out, no return
+		end
+	end
+	if table.getn( argList ) > table.getn( typeList ) then
+		local errorMessage = "Too many arguments passed to function!"
+		errorMessage = errorMessage .. "Expected " .. tostring( table.getn( typeList ) )
+		errorMessage = errorMessage .. " got " .. tostring( table.getn( argList ) )
+		fatal( errorMessage )
+	end
+end
+
+
+--? @shortdesc Add runtime type checking to a lua class; e.g. MyClass = typecheck_class( MyClass )
+--? @args The class to add typechecking to.
+--~ myObj = {
+--~ 	taco_interface = { ST_NUMBER },
+--~ 	taco = function( self, x )
+--~ 		return math.sqrt(x)
+--~ 	end,
+--~
+--~ 	cheese_static_interface = { ST_STRING },
+--~ 	cheese = function( x )
+--~ 		print(x)
+--~ 	end,
+--~ }
+--~ typecheck_class( myObj )
+--~
+--~ myObj:taco( 7 ) -- ok
+--~ myObj:taco( "booga" ) -- fails, error
+--~ myObj.cheese( "testString" ) -- ok
+--~ myObj.cheese( 5 ) -- ok
+--~
+function typecheck_class( classObj )
+	for k,v in pairs( classObj ) do
+		if type( v ) == "function" then
+			local interface = classObj[k.."_interface"]
+			local static_interface = classObj[k.."_static_interface"]
+			if interface ~= nil then
+				classObj[k] = typecheck( "table", unpack( interface ) )( v )
+			elseif static_interface ~= nil then
+				classObj[k] = typecheck( unpack( static_interface ) )( v )
+			end				
+		elseif type( v ) == "table" then
+			typecheck_class( v )
+		end
+	end
+end

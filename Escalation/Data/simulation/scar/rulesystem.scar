@@ -1,0 +1,229 @@
+----------------------------------------------------------------------------------------------------------------
+-- Rule System helper functions
+-- (c) 2003 Relic Entertainment Inc.
+
+--? @group RuleSystem
+
+----------------------------------------------------------------------------------------------------------------
+-- Scar rule system functions
+
+function __ClampRulePriority(priority)
+
+	if priority == nil then
+		priority = 0
+	end
+	
+	if priority < 0 then
+		print("Adding rule with priority less than 0. Clamping to 0. Rule priorities have to be from 0 to 1000.")
+		priority = 0
+	elseif priority > 1000 then
+		print("Adding rule with priority greater than 1000. Clamping to 1000. Rule priorities have to be from 0 to 1000.")
+		priority = 1000
+	end
+	
+	return priority
+	
+end
+
+--? @shortdesc Add a rule to be executed every frame. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule[, Integer priority]
+function Rule_Add( f, priority )
+	priority = __ClampRulePriority(priority)
+	TimeRule_Add( f, priority )
+end
+
+--? @shortdesc Add a rule to be executed every frame if it has not already been added. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule[, Integer priority]
+function Rule_AddIfNotAlreadyExisting( f, priority )
+	if not TimeRule_Exists(f) then
+		priority = __ClampRulePriority(priority)
+		TimeRule_Add( f, priority )
+	elseif debug ~= nil then
+		local function_name = "[unknown]"
+		local debug_info = debug.getinfo(f)
+		if debug_info ~= nil and debug_info.name ~= nil then
+			function_name = debug_info.name
+		end
+		
+		print("Warning, didn't add rule "..function_name.." because it has already been added")
+	end
+end
+
+--? @shortdesc Add a rule to be executed 'calls' times, at every 'interval' seconds. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real interval, Integer calls[, Integer priority]
+function Rule_AddIntervalEx( f, interval, calls, priority )
+	priority = __ClampRulePriority(priority)
+	TimeRule_AddIntervalEx( f, interval, calls, priority )
+end
+
+--? @shortdesc Add a rule to be executed 'calls' times, at every 'interval' seconds if it has not already been added. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real interval, Integer calls[, Integer priority]
+function Rule_AddIntervalExIfNotAlreadyExisting( f, interval, calls, priority )
+	if not TimeRule_Exists(f) then
+		priority = __ClampRulePriority(priority)
+		TimeRule_AddIntervalEx( f, interval, calls, priority )
+	elseif debug ~= nil then
+		local function_name = "[unknown]"
+		local debug_info = debug.getinfo(f)
+		if debug_info ~= nil and debug_info.name ~= nil then
+			function_name = debug_info.name
+		end
+		
+		print("Warning, didn't add rule "..function_name.." because it has already been added")
+	end
+end
+
+--? @shortdesc Add a rule to be executed at every 'interval' seconds. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real interval[, Integer priority]
+function Rule_AddInterval( f, interval, priority )
+	priority = __ClampRulePriority(priority)
+	TimeRule_AddInterval( f, interval, priority )
+end
+
+--? @shortdesc Add a rule to be executed at every 'interval' seconds, starting after 'delay' seconds. 
+--? @extdesc Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real delay, Real interval[, Integer priority]
+function Rule_AddDelayedInterval( f, delay, interval, priority )
+	interval = interval or fatal("Interval (parameter 3) is not properly set in Rule_AddDelayedInterval")
+    priority = __ClampRulePriority(priority)
+	
+	TimeRule_AddDelayedInterval( f, delay, interval, priority )
+end
+
+--? @shortdesc Add a rule to be executed at every 'interval' seconds, starting after 'delay' seconds, will run 'calls' times. 
+--? @extdesc Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real delay, Real interval[Integer calls, Integer priority]
+function Rule_AddDelayedIntervalEx( f, delay, interval, calls, priority )
+	priority = __ClampRulePriority(priority)
+	interval = interval or fatal("Interval (parameter 3) is not properly set in Rule_AddDelayedIntervalEx")
+
+	TimeRule_AddDelayedIntervalEx( f, delay, interval, calls, priority )
+end
+
+--? @shortdesc Add a rule to be executed at every 'interval' seconds if it has not already been added. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real interval[, Integer priority]
+function Rule_AddIntervalIfNotAlreadyExisting( f, interval, priority )
+	if not TimeRule_Exists(f) then
+		priority = __ClampRulePriority(priority)
+		TimeRule_AddInterval( f, interval, priority )
+	elseif debug ~= nil then
+		local function_name = "[unknown]"
+		local debug_info = debug.getinfo(f)
+		if debug_info ~= nil and debug_info.name ~= nil then
+			function_name = debug_info.name
+		end
+		
+		print("Warning, didn't add rule "..function_name.." because it has already been added")
+	end
+end
+
+--? @shortdesc Add a rule to be executed once, after 'interval' seconds. Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real interval[, Integer priority]
+function Rule_AddOneShot( f, interval, priority )
+	priority = __ClampRulePriority(priority)
+	TimeRule_AddOneShot( f, interval, priority )
+end
+
+--? @shortdesc Add a rule to be executed once, after 'interval' seconds if this rule does not already been added.  Priority can be from 0 to 1000, with 0 being the lowest. Priority is used in conjunction with Rule_RemoveAll so that rules with high priority do not get removed.
+--? @result Void
+--? @args LuaFunction rule, Real interval[, Integer priority]
+function Rule_AddOneShotIfNotAlreadyExisting( f, interval, priority )
+	if not TimeRule_Exists(f) then
+		priority = __ClampRulePriority(priority)
+		TimeRule_AddOneShot( f, interval, priority )
+	elseif debug ~= nil then
+		local function_name = "[unknown]"
+		local debug_info = debug.getinfo(f)
+		if debug_info ~= nil and debug_info.name ~= nil then
+			function_name = debug_info.name
+		end
+		
+		print("Warning, didn't add rule "..function_name.." because it has already been added")
+	end
+end
+
+--? @shortdesc Change 'interval' seconds of an existing rule
+--? @result Void
+--? @args LuaFunction rule, Real interval
+function Rule_ChangeInterval( f, interval )
+	TimeRule_ChangeInterval( f, interval )
+end
+
+--? @shortdesc Remove a currently executing rule (only works inside a rule function)
+--? @result Void
+--? @args Void
+function Rule_RemoveMe()
+	-- Try RemoveMe in both time rule system and event rule system.
+	-- There should only be one rule executing at any given time.
+	TimeRule_RemoveMe()
+	Rule_EventRemoveMe()
+end
+
+--? @shortdesc Remove a currently active rule (this does not remove any event rules)
+--? @result Void
+--? @args LuaFunction rule
+function Rule_Remove( f )
+	-- Event rule removal would require additional input.
+	-- Therefore, this is only for time rules
+	TimeRule_Remove( f )
+end
+
+--? @shortdesc Remove a currently active rule if it exists(this does not remove any event rules)
+--? @result Void
+--? @args LuaFunction rule
+function Rule_RemoveIfExist( f )
+	-- Event rule removal would require additional input.
+	-- Therefore, this is only for time rules
+	if Rule_Exists( f ) then
+		TimeRule_Remove( f )
+	end
+end
+
+--? @shortdesc Kills all rules below a certain priority. The default is to remove ALL rules.
+--? @result Void
+--? @args [Integer max_priority]
+function Rule_RemoveAll(max_priority)
+	if max_priority == nil then max_priority = 1000 end
+	-- Kill both time rules and event rules
+	TimeRule_RemoveAll(max_priority)
+	Rule_RemoveAllEvents()
+end
+
+--? @shortdesc Test if a rule is currently active
+--? @result Boolean
+--? @args LuaFunction rule
+function Rule_Exists( f )
+	-- Check if the rules exists as time rules; if not check for event rules
+	if TimeRule_Exists( f ) == true
+		or Rule_EventExists(f) == true then
+		return true;
+	end
+	
+	return false
+end
+
+--? @shortdesc Add a rule to be executed when a simulation event is sent.  The rule is only added if it hasn't been added to the rule system at a prior time.
+--? @result Void
+--? @args LuaFunction rule[, GameEventType eventType]
+function Rule_AddEventIfNotAlreadyExisting( f, eventType )
+	if not Rule_Exists(f) then
+		Rule_AddEvent(f, eventType)
+	elseif debug ~= nil then
+		local function_name = "[unknown]"
+		local debug_info = debug.getinfo(f)
+		if debug_info ~= nil and debug_info.name ~= nil then
+			function_name = debug_info.name
+		end
+		
+		print("Warning, didn't add rule "..function_name.." because it has already been added")
+	end	
+end

@@ -1,0 +1,105 @@
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--
+-- LUA CONSTANTS
+-- Defines variables to be used for important Lua defined contsants
+--
+-- 
+-- (c) 2006 Relic Entertainment
+--
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+function LuaConsts_Init()
+	
+	-- delay the  variables that need to use Scar functions
+	LuaConsts_OnLoad()
+	
+end
+Scar_AddInit(LuaConsts_Init)
+
+
+
+-- constants for describing races
+RACE_SPACEMARINE 			= "space_marines"
+RACE_ELDAR					= "eldar"
+RACE_ORK					= "orks"
+RACE_TYRANID				= "tyranids"
+RACE_IMPERIALGUARD			= "imperial_guard"
+RACE_CHAOS				    = "chaos_marines"
+RACE_TAU                    = "tau"
+RACE_NECRON           		= "necron"
+
+-- constants used for overriding options
+OPTION_EVENT_CUES			= "SquadEventCues"
+OPTION_SQUAD_CONTROL		= "SquadControl"
+OPTION_STICKY_SELECTION		= "StickySelection"
+OPTION_MOUSE_SCROLL 		= "MouseScroll"
+
+
+
+function _InitializeSBPS()
+
+	--[[ SBPS ]]
+	-- example of use: SBP.UNIT_NAME
+	SBP = {
+		
+		--[[ RACE1 SBPS ]]
+		
+		--infantry
+		
+		--vehicles
+		
+		--[[ RACE2 SBPS ]]
+		
+		--infantry
+		
+		--vehicles
+	}
+
+end
+_InitializeSBPS()
+
+--[[ must fill in the rest when I can - deg ]]
+function _InitializeEBPS()
+
+	--[[ EBPS ]]
+	-- example of use: EBP.UNIT_NAME
+	EBP = {
+	}
+		
+	-- use this in a filter command. i.e. EGroup_Filter(eg_allentities, EBP.ALLWRECKS, FILTER_KEEP)
+	EBP.ALLWRECKS = {ebps_camp_csm_wrecks_dreadnought, ebps_camp_csm_wrecks_predator, ebps_camp_eld_wrecks_falcon, ebps_camp_eld_wrecks_fire_prism, ebps_camp_eld_wrecks_wraithlord,
+								ebps_camp_ig_wrecks_baneblade, ebps_camp_ig_wrecks_chimera, ebps_camp_ig_wrecks_leman_russ, ebps_camp_ig_wrecks_manticore, ebps_camp_ig_wrecks_sentinel,
+								ebps_camp_sm_wrecks_dreadnought, ebps_camp_sm_wrecks_landraider, ebps_camp_sm_wrecks_predator, ebps_camp_ork_wrecks_battlewagon, ebps_camp_ork_wrecks_deff_dread,
+								ebps_camp_ork_wrecks_looted_tank, ebps_camp_tyr_wrecks_carnifex,ebps_camp_tyr_wrecks_swarmlord, ebps_camp_tyr_wrecks_carnifex}
+
+end
+_InitializeEBPS()
+
+
+-- delaying the variables that rely on Scar commands
+-- Scar commands used before initialization can cause crashes
+-- this is a precautionary action - deg
+function LuaConsts_OnLoad()
+	
+	--[[ EVENT CUE ICON & SOUNDS ]] 				
+	-- 					Icon Path:	Root\WW2\Data\Art\UI\InGame
+	-- 					Sound Path:	Root\WW2\Data\Sound\UI\EventCues
+	CUE_NORMAL 			= {icon = "events/event_cue", sound = "UI/Alerts/x_x_ui_generic_attention"}
+	CUE_RESPAWN			= {icon = "events/event_cue_respawn", sound = "UI/Alerts/x_x_ui_generic_attention"}
+end
+
+OFFSET_FRONT = 0
+OFFSET_FRONT_RIGHT = 1
+OFFSET_FRONT_LEFT = 7
+OFFSET_BACK = 4
+OFFSET_BACK_RIGHT = 3
+OFFSET_BACK_LEFT = 5
+OFFSET_RIGHT = 2
+OFFSET_LEFT = 6
+
+-- use these as offsets in SGroup_IsUnderAttackFromDirection
+OFFSET_DIRECTION_FRONT = {OFFSET_FRONT_LEFT, OFFSET_FRONT, OFFSET_FRONT_RIGHT}
+OFFSET_DIRECTION_RIGHT = {OFFSET_FRONT_RIGHT, OFFSET_RIGHT, OFFSET_BACK_RIGHT}
+OFFSET_DIRECTION_BACK = {OFFSET_BACK_RIGHT, OFFSET_BACK, OFFSET_BACK_LEFT}
+OFFSET_DIRECTION_LEFT = {OFFSET_BACK_LEFT, OFFSET_LEFT, OFFSET_FRONT_LEFT}

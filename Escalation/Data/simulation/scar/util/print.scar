@@ -1,0 +1,80 @@
+
+function PrintOnScreen(text, instance, duration, pos, color)
+    text = text or 0
+    duration = duration or 0
+	instance = instance or tostring(text)
+    
+    pos = pos or {}
+    pos.x = pos.x or 0.05
+    pos.y = pos.y or 0.05
+    
+    color = color or {}
+    color.r = color.r or 213
+    color.g = color.g or 213
+    color.b = color.b or 213
+    
+	dr_clear(instance)
+	
+	dr_setautoclear(instance, duration)
+	dr_text2d(instance, pos.x, pos.y, text, color.r, color.g, color.b) 
+	return instance
+end
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+function CreateSpecialPrint(prefix)
+	return function (...)
+		local printResult = prefix..": "
+		for i,v in ipairs(arg) do
+			printResult = printResult .. tostring(v) .. "\t"
+		end
+		print(printResult )
+	end
+end
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+iPrintObjectTabs = 0
+_PrintTableStack = {}
+function PrintObject(obj, max_depth, data_type, print_func)
+	
+	if( print_func == nil ) then
+		print_func = print
+	end
+	
+	local tabs = ""
+	for i = 0, iPrintObjectTabs, 1 do
+		tabs = tabs.."\t"
+	end
+	
+	if( max_depth and max_depth > 0 and iPrintObjectTabs > max_depth ) then
+		return
+	end
+	
+	if( type(obj) =="table" ) then
+	
+		if( DoesTableContain(_PrintTableStack, obj) ) then
+			print_func( "Recursive Printing Error Detected." )
+			return
+		end
+		
+		table.insert( _PrintTableStack, obj )
+		
+		print_func(tabs.. "{")
+		iPrintObjectTabs = iPrintObjectTabs + 1
+		for k,v in pairs(obj) do
+			print_func(tabs.. "\t[" .. tostring(k) .. "]")
+			PrintObject(v, max_depth, data_type, print_func)
+		end
+		iPrintObjectTabs = iPrintObjectTabs - 1
+		print_func(tabs.. "},")
+		
+		table.remove(_PrintTableStack,table.getn(_PrintTableStack))
+		
+	else
+		
+		if( data_type == nil or type(obj) == data_type ) then
+			print_func(tabs.. tostring(obj))
+		end
+		
+	end
+
+end

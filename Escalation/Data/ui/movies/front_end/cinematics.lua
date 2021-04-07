@@ -1,0 +1,26 @@
+Images = 
+{
+	"data:ui\\textures\\generic\\thumb_top_over.dds",
+	"data:ui\\textures\\generic\\thumb_top.dds",
+	"data:ui\\textures\\generic\\thumb_middle_over.dds",
+	"data:ui\\textures\\generic\\thumb_middle.dds",
+	"data:ui\\textures\\generic\\thumb_bottom_over.dds",
+	"data:ui\\textures\\generic\\thumb_bottom.dds",
+	"data:UI\\textures\\generic\\fe\\game_setup\\searching_pane2.dds",
+	"data:UI\\textures\\generic\\fe\\game_setup\\map_scroll.dds",
+	"data:UI\\textures\\generic\\fe\\game_setup\\game_options_bg2.dds",
+	"data:ui\\textures\\generic\\bridge\\inv\\close_btn_over.dds",
+	"data:ui\\textures\\generic\\bridge\\inv\\close_btn_down.dds",
+	"data:ui\\textures\\generic\\bridge\\inv\\close_btn.dds",
+	"data:ui\\textures\\generic\\fe\\cinematics\\button_up.dds",
+	"data:ui\\textures\\generic\\button_scrollup.dds",
+	"data:ui\\textures\\generic\\button_scrolldown.dds",
+	"data:ui\\textures\\generic\\button_scroll_over.dds",
+	"data:ui\\textures\\generic\\button_scroll_down.dds",
+	"data:ui\\textures\\generic\\fe\\cinematics\\button_over.dds",
+	"data:ui\\textures\\generic\\fe\\cinematics\\button_down.dds",
+	"data:ui\\textures\\generic\\fe\\cinematics\\button_disabled.dds",
+	"data:ui\\textures\\generic\\fe\\camp\\accept_btn_over.dds",
+	"data:ui\\textures\\generic\\fe\\camp\\accept_btn_down.dds",
+	"data:ui\\textures\\generic\\fe\\camp\\accept_btn.dds"
+}
