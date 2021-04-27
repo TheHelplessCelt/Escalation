@@ -1,0 +1,17 @@
+coverbox =
+{
+    maintain_contour = true,
+    offset = 
+    {
+        x = 0.028,
+        y = 5.462,
+        z = 0.045,
+    },
+    scale = 
+    {
+        x = 8.552,
+        y = 11.462,
+        z = 7.559,
+    },
+}
+coverbox_states={}

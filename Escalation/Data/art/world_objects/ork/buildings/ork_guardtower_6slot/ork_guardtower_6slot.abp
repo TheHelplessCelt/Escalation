@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "ork_guardtower_6slot",
+    "ork_guardtower_6slot_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Ork_base",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

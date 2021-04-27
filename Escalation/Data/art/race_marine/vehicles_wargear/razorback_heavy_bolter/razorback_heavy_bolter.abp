@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Razorback_Heavy_Bolter",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

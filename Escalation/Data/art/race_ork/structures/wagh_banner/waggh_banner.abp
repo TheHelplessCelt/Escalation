@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "waggh_banner",
+    "waggh_banner_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

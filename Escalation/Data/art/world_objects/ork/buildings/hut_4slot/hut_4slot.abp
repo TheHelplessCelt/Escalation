@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "hut_4slot",
+    "hut_4slot_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

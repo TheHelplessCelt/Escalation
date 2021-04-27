@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Drop_Pod",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

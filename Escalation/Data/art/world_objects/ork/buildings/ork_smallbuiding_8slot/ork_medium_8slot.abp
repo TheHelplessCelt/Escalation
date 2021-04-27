@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "ork_medium_8slot",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

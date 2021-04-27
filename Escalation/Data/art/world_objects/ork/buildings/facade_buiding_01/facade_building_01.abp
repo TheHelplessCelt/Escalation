@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "facade_building_01",
+    "facade_building_01_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

@@ -56,6 +56,24 @@ ChapterColours =
 	},
 
 	{
+		chapterKeyName = "SM_Toaster",
+		
+		chapterNameID = 70000256, -- LOCDB [70000256] 'Toaster Race'
+--~ 		chapterNameID = 70000260, -- LOCDB [70000260] 'Toaster Race Chapter'
+		
+		primaryColourName = "Bronzed Flesh",
+		secondaryColourName = "Light Grey",
+		tintColourName = "Spectral Blue",
+		extraColourName = "Dheneb Stone",
+
+		teamTex = "1",
+		badge1Tex = "sm_Toaster",
+
+		usableRaces = { "race_marine" },
+		armyPainterVisibility = true,
+	},
+
+	{
 		chapterKeyName = "SM_Darkangels",
 		
 		chapterNameID = 9109489, -- LOCDB [9109489] 'Dark Angels'
@@ -751,7 +769,7 @@ ChapterColours =
 	{
 		chapterKeyName = "Eldar_Ulthwe_DLC",
 
-		chapterNameID = 9160653, -- LOCDB [9160653] 'Ulthwé DLC'
+		chapterNameID = 9160653, -- LOCDB [9160653] 'Ulthwï¿½ DLC'
 		
 		primaryColourName = "Chaos Black",
 		secondaryColourName = "Bleached Bone",
@@ -1098,7 +1116,7 @@ ChapterColours =
 	{
 		chapterKeyName = "Tyranid_Behemoth_DLC",
 
-		chapterNameID = 9160876, -- LOCDB [9160876] 'Behemoth – Ultramar Tendril'
+		chapterNameID = 9160876, -- LOCDB [9160876] 'Behemoth ï¿½ Ultramar Tendril'
 		
 		primaryColourName = "Orkhide Shade",
 		secondaryColourName = "Swamp Green",

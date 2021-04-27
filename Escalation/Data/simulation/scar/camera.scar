@@ -1,0 +1,101 @@
+----------------------------------------------------------------------------------------------------------------
+-- Camera helper functions
+-- (c) 2003 Relic Entertainment Inc.
+
+--? @group Camera
+
+----------------------------------------------------------------------------------------------------------------
+
+--? @shortdesc Executes a camera transition to a desired target, viewing angle and distance
+--? Setting smooth to true will make the camera smoothly transition.
+--? Setting smooth to false will make the camera instantly snap
+--? The optional transitionSpeedOverride can be set to override the speed that the camera will transition at for this transition only.
+--? If target is an EGroup, then the camera will target the first spawned entity in the group.  If target is an SGroup then the camera will target the first spawned squad in the group.
+--? @args MarkerID/ScarPosition/SGroup/EGroup/Squad/Entity target, Real declination, Real orbit, Real distance[, Boolean smooth, Real transitionSpeedOverride]
+function Camera_SetTargetAndViewpoint(target, declination, orbit, distance, smooth, transitionSpeedOverride)
+	Camera_SetGameplayCameraTuningValue(CGTT_MinimumDeclination, declination)
+	Camera_SetGameplayCameraTuningValue(CGTT_MaximumDeclination, declination)
+	Camera_SetGameplayCameraTuningValue(CGTT_DefaultDeclination, declination)
+	Camera_SetGameplayCameraTuningValue(CGTT_DefaultOrbit, orbit)
+	Camera_SetGameplayCameraTuningValue(CGTT_MinimumDistance, distance)
+	Camera_SetGameplayCameraTuningValue(CGTT_MaximumDistance, distance)
+	Camera_SetGameplayCameraTuningValue(CGTT_DefaultDistance, distance)
+	Camera_SetTarget(target, smooth, transitionSpeedOverride, true)
+end
+
+--? @shortdesc Resets the camera's tuning values to original defaults and moves it to the default position
+--? @extdesc
+--? Setting smooth to true will make the camera smoothly transition.
+--? Setting smooth to false will make the camera instantly snap
+--? @args [Boolean smooth, Real transitionSpeedOverride ]
+--? @result Void
+function Camera_ResetAllGameplayCameraTuningValuesAndMoveToDefault(smooth, transitionSpeedOverride)
+	Camera_ResetAllGameplayCameraTuningValues()
+	Camera_MoveToDefaultAngle(smooth, transitionSpeedOverride)
+end
+
+--? @shortdesc Set the desired camera target. The optional pan flag should be true if you want the camera to smoothly pan to the new location.
+--? The optional transitionSpeedOverride can be set to override the speed that the camera will transition at for this transition only.
+--? The optional resetCameraAngleToDefault can be set to have the camera transition its viewing angle to the default orbit, declination and distance while moving to the new target.
+--? If target is an EGroup, then the camera will target the first spawned entity in the group.  If target is an SGroup then the camera will target the first spawned squad in the group.
+--? @args MarkerID/ScarPosition/SGroup/EGroup/Squad/Entity target[, Boolean smooth, Real transitionSpeedOverride, Boolean resetCameraAngleToDefault]
+--? @result Void
+function Camera_SetTarget(target, smooth, transitionSpeedOverride, resetCameraAngleToDefault)
+	
+	if scartype(target) ~= ST_MARKER
+		and scartype(target) ~= ST_SCARPOS
+		and scartype(target) ~= ST_SGROUP
+		and scartype(target) ~= ST_EGROUP
+		and scartype(target) ~= ST_SQUAD
+		and scartype(target) ~= ST_ENTITY then
+		error("Camera_SetTarget expects a MarkerID, ScarPosition, SGroup, EGroup, Squad or Entity for its target, received a "..tostring(scartype(target)))
+	end
+	
+	-- if we were passed in a marker, convert it to a pos
+	if scartype(target) == ST_MARKER then
+		target = Marker_GetPosition(target)
+	elseif scartype(target) == ST_SGROUP then
+		if SGroup_CountSpawned(target) > 0 then
+			target = SGroup_GetSpawnedSquadAt(target, 1)
+		else
+			print("Camera_SetTarget got an SGroup that has no spawned squads, no target will be set for the camera")
+			return
+		end
+	elseif scartype(target) == ST_EGROUP then
+		if EGroup_CountSpawned(target) > 0 then
+			target = EGroup_GetSpawnedEntityAt(target, 1)
+		else
+			print("Camera_SetTarget got an EGroup that has no spawned entities, no target will be set for the camera")
+			return
+		end
+	end
+	
+	-- ensure that optional parameters are not nil
+	smooth = smooth or false
+	transitionSpeedOverride = transitionSpeedOverride or 0
+	resetCameraAngleToDefault = resetCameraAngleToDefault or false
+
+	-- shift the camera
+	if scartype(target) == ST_SCARPOS then
+		Camera_FocusOnPosition(target, smooth, transitionSpeedOverride, resetCameraAngleToDefault)
+	elseif scartype(target) == ST_SQUAD then
+		Camera_FocusOnSquad(target, smooth, transitionSpeedOverride, resetCameraAngleToDefault)
+	elseif scartype(target) == ST_ENTITY then
+		Camera_FocusOnEntity(target, smooth, transitionSpeedOverride, resetCameraAngleToDefault)
+	end
+	
+end
+
+--? @shortdesc Moves the camera to its default viewing angle.  The optional smooth flag should be true if you want the camera to smoothly transition to the new location.
+--? The optional transitionSpeedOverride can be set to override the speed that the camera will transition at for this transition only.
+--? @extdesc
+--? Setting smooth to true will make the camera smoothly transition.
+--? Setting smooth to false will make the camera instantly snap
+--? @args [Boolean smooth, Real transitionSpeedOverride ]
+--? @result Void
+function Camera_MoveToDefaultAngle(smooth, transitionSpeedOverride)
+	smooth = smooth or false
+	transitionSpeedOverride = transitionSpeedOverride or 0
+	
+	Camera_InputResetToDefault(smooth, transitionSpeedOverride)
+end

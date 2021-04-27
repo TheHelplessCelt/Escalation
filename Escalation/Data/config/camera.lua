@@ -17,11 +17,11 @@ MaximumZoomSpeed = 300
 ZoomAccelerationTime = 0.01
 
 --Default camera vertical angle, measured in degrees from vertical.  0 is straight down, 90 is horizontal
-DefaultDeclination = 45
+DefaultDeclination = 43
 --Minimum camera vertical angle, measured in degrees from vertical.  0 is straight down, 90 is horizontal
 MinimumDeclination = 1
 --Maximum camera vertical angle, measured in degrees from vertical.  0 is straight down, 90 is horizontal
-MaximumDeclination = 90
+MaximumDeclination = 100
 
 --Default camera horizontal angle, measured in degrees
 DefaultOrbit = 225
@@ -34,7 +34,7 @@ MinimumDistance = 1.1
 MaximumDistance = 100
 
 --Controls how quickly the camera transitions when double clicking on the map and reseting the camera to default
-PositionTransitionSpeed = 400
+PositionTransitionSpeed = 200
 
 
 --Exponent used for distance, higher values will increase the amount of "slowdown" the camera experiences when zooming in

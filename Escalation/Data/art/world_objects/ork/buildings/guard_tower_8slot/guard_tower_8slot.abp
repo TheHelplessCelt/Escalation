@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "guard_tower_8slot",
+    "guard_tower_8slot_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

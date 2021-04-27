@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "scout_armour_common",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

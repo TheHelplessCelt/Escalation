@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "ork_shed_12slot",
+    "ork_shed_12slot_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

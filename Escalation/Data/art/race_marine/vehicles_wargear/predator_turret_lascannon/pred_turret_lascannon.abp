@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Pred_Turret_Lascannon",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

@@ -1,0 +1,10 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Tech_Marine_Axe_Common",
+    "Tech_Marine_Axe_Common_rubble",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

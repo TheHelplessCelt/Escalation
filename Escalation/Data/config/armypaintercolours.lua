@@ -1420,6 +1420,12 @@ TeamColourInfoList =
 			armyPainterVisibility = true,
 		},
 		{
+			badgeTextureName = "SM_Toaster",
+			helpTextID = 70000256,
+			usableRaces = { "race_marine" },	
+			armyPainterVisibility = true,
+		},
+		{
 			badgeTextureName = "SM_Ultramarines",
 			helpTextID = 810001,
 			usableRaces = { "race_marine" },	

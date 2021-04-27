@@ -3,7 +3,7 @@ simbox =
     maintain_contour = true,
     offset = 
     {
-        x = -0.000,
+        x = 0.000,
         y = 0.875,
         z = -0.050,
     },

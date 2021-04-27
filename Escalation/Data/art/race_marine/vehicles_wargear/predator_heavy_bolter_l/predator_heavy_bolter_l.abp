@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "Predator_Heavy_Bolter_L",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}

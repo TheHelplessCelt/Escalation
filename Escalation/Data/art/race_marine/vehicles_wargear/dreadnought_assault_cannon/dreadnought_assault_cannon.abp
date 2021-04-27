@@ -1,0 +1,9 @@
+--[[Auto-generated from Toaster]]
+model =
+{
+    "dreadnought_assault_cannon",
+}
+simvis_attributes =
+{
+    object_scar = 0
+}
